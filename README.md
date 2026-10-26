@@ -13,7 +13,7 @@ Ollama on Windows runs in conservative mode by default (FP16 KV cache and disabl
 Open PowerShell as **Administrator** and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/Masterm3u/Ollama-Turbo-RTX/main/Ollama-Turbo-RTX.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/Masterm3u/Ollama-Turbo-RTX/main/Ollama-Turbo-RTX.ps1 -OutFile "$env:TEMP\Ollama-Turbo-RTX.ps1"; powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\Ollama-Turbo-RTX.ps1"
 ```
 
 Or clone / download the repo and double-click `Ollama-Turbo-RTX.bat`.
