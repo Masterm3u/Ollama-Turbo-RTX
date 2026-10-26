@@ -1,9 +1,9 @@
-# Ollama-Turbo-RTX — bootstrap compatible irm | iex (pas de bloc param)
+# Ollama-Turbo-RTX - bootstrap compatible irm | iex (pas de bloc param)
 $ErrorActionPreference = "Stop"
 $src = "https://raw.githubusercontent.com/Masterm3u/Ollama-Turbo-RTX/main/Ollama-Turbo-RTX.ps1"
 $dst = Join-Path $env:TEMP "Ollama-Turbo-RTX.ps1"
 
-Write-Host "[*] Ollama-Turbo-RTX — telechargement..." -ForegroundColor Cyan
+Write-Host "[*] Ollama-Turbo-RTX - telechargement..." -ForegroundColor Cyan
 Invoke-WebRequest -Uri $src -OutFile $dst -UseBasicParsing
 
 $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$dst`""
