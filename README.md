@@ -55,6 +55,7 @@ This project is **open-source PowerShell only** — no `.exe`, no packed binary,
 | **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
 | **VirusTotal** | Re-upload latest `.ps1` after each change — hash `7a4fb527…` → [VirusTotal lookup](https://www.virustotal.com/gui/file/7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746) (previous build was **0/60 clean**) |
 | **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
+| **Code signing** | Optional Authenticode — see [`SIGNING.md`](SIGNING.md) (self-signed = lab; commercial OV/EV = SmartScreen) |
 
 ```powershell
 # Verify integrity after download

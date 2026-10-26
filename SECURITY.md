@@ -49,6 +49,15 @@ notepad "$env:TEMP\Ollama-Turbo-RTX.ps1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\Ollama-Turbo-RTX.ps1"
 ```
 
+## Authenticode code signing (optional / enterprise)
+
+See **[SIGNING.md](SIGNING.md)** and `tools\Sign-Release.ps1`.
+
+- **Self-signed** → trust only after deploying the cert (lab / company GPO). Does **not** clear SmartScreen for the public.
+- **Commercial Code Signing (OV/EV)** → proves author identity and integrity in transit; required for “no warning” public Windows reputation.
+
+The public GitHub source may ship **unsigned** so every commit stays reviewable; signed builds can be attached as [Releases](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases) once a commercial cert is available.
+
 ## Reporting issues
 
 If you believe something is unsafe, open a GitHub Issue on this repository.
