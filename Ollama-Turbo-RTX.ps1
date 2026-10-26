@@ -1343,6 +1343,7 @@ do {
   \___/|_|_|\__,_|_| |_| |_|\__,_|  \_/\__,_|_|    |_.__/ \___/
       Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
+    Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
 
     Show-Status
     Show-Menu
