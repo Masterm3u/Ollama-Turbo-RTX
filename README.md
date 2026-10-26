@@ -28,19 +28,31 @@ Zero clone. Zero installer. Menu in color → optimize → optional live bench.
 
 ---
 
-### 📊 Why it matters (proof, not vibes)
+### 📊 Real benchmark (author hardware — not marketing)
 
-| Metric | Stock Ollama (Windows default) | Turbo Pure Speed (FA) | Turbo Context (FA + Q8) |
-|--------|--------------------------------|------------------------|-------------------------|
-| Flash Attention | Off | **On** | **On** |
-| KV cache | FP16 | FP16 | **q8_0** |
-| Context VRAM | 100% baseline | ~100% | **~50%** |
-| Goal | Compatibility | Max decode quality/speed | Longer context / bigger models in VRAM |
-| Verify | — | Menu **[4]** live bench | Menu **[4]** live bench |
+Measured with the built-in live bench (**menu [4]**), same model & context for all three modes:
 
-Run **[4] Benchmark** after install and you get a **Stock | Speed | Context** tokens/s table on *your* GPU — the number that converts skeptics.
+| | |
+|--|--|
+| **GPU** | NVIDIA GeForce RTX 5080 (~15.9 GB) |
+| **CPU** | Intel Core Ultra 9 285K |
+| **RAM** | 31 GB |
+| **OS** | Windows 11 Pro 64-bit (build 10.0.26300) |
+| **Model** | `qwen-64k:latest` |
+| **Context** | 16384 tokens |
+| **Date** | 2026-10-26 |
 
-> **Tip for stars / Reddit:** paste your real table (GPU + model + t/s) into issues or your post. Devs trust screenshots of numbers, not slogans.
+| Configuration | Generation (t/s) | Speed vs Stock | Context VRAM |
+|---------------|-----------------:|---------------:|-------------:|
+| **[Stock]** Windows default | 107.6 | — | 100% |
+| **[2] Turbo Pure Speed (FA)** | 107.81 | **+0.2%** | 100% |
+| **[1] Turbo Context (FA + Q8)** | **139.28** | **+29.4%** | **−50%** |
+
+**Winner on this machine:** Turbo Context (FA + Q8) → **+29.4% tokens/s** and **half the KV VRAM**.
+
+Raw report: [`benchmarks/RTX5080_qwen-64k_2026-10-26.txt`](benchmarks/RTX5080_qwen-64k_2026-10-26.txt)
+
+> Results vary by GPU / model / drivers. Run **[4]** yourself and compare — that’s the point.
 
 ---
 

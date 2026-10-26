@@ -1,0 +1,19 @@
+================================================================================
+ RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO
+ Date     : 2026-10-26 16:19:01
+ Modele   : qwen-64k:latest
+ Contexte : 16384 tokens
+ GPU      : NVIDIA GeForce RTX 5080 (~15,9 GB)
+ CPU      : Intel(R) Core(TM) Ultra 9 285K
+ RAM      : 31 GB
+ Windows  : Windows 11 Professionnel (64 bits) — build 10.0.26300
+================================================================================
+ CONFIGURATION              GENERATION (Tokens/s)   GAIN VITESSE    GAIN VRAM
+--------------------------------------------------------------------------------
+ [Stock] Par defaut                 107.6 t/s       (Reference)      Aucun (100%)
+ [2] Turbo Vitesse (FA)             107.81 t/s        +0.2 %          Aucun (100%)
+ [1] Turbo Contexte (FA + Q8)       139.28 t/s        +29.4 %          -50 % VRAM
+================================================================================
+ RECOMMANDATION :
+ -> Meilleure configuration detectee : Turbo Contexte (FA + Q8)
+================================================================================
