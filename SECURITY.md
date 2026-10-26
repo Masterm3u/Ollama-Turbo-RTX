@@ -30,7 +30,7 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Current `Ollama-Turbo-RTX.ps1` scan (no API key required to view):**
+**Current `Ollama-Turbo-RTX.ps1` scan: 0 / 60 engines — clean**
 
 → [https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)
 

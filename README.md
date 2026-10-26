@@ -6,7 +6,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/groupeplatinium)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-scan%20report-394EFF?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F60%20clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
 
@@ -53,7 +53,7 @@ This project is **open-source PowerShell only** — no `.exe`, no packed binary,
 |-------|-----|
 | **Source** | [`Ollama-Turbo-RTX.ps1`](Ollama-Turbo-RTX.ps1) — plain text |
 | **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
-| **VirusTotal** | **[Public scan report](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)** for `Ollama-Turbo-RTX.ps1` (SHA-256 `d51c5599…`) |
+| **VirusTotal** | **[0 / 60 engines — clean](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)** for `Ollama-Turbo-RTX.ps1` (SHA-256 `d51c5599…`) |
 | **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
 
 ```powershell
