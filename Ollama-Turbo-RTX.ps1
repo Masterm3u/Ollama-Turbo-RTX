@@ -5,10 +5,10 @@
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Dimensionnement propre de la fenetre pour afficher le menu complet des le debut
+# Dimensionnement provisoire (le fit final = buffer verrouille apres dessin du menu)
 try {
     $rawUI = $Host.UI.RawUI
-    $newSize = New-Object System.Management.Automation.Host.Size(100, 42)
+    $newSize = New-Object System.Management.Automation.Host.Size(110, 55)
     $rawUI.BufferSize = $newSize
     $rawUI.WindowSize = $newSize
     [Console]::SetWindowPosition(0, 0)
@@ -956,65 +956,70 @@ function New-BenchmarkStressPrompt { return (New-HeavyStressPrompt) }
 function Set-ConsoleSizeSafe {
     param(
         [int]$Width = 110,
-        [int]$Height = 45
+        [int]$Height = 45,
+        [switch]$LockBuffer  # buffer = fenetre : empêche le scroll (titre reste visible sous WT)
     )
     try {
         $maxW = [Console]::LargestWindowWidth
         $maxH = [Console]::LargestWindowHeight
         if ($maxW -lt 40) { $maxW = 120 }
-        if ($maxH -lt 20) { $maxH = 50 }
+        if ($maxH -lt 20) { $maxH = 60 }
 
         $w = [math]::Min($Width, $maxW)
         $h = [math]::Min($Height, $maxH)
         if ($w -lt 80) { $w = [math]::Min(80, $maxW) }
         if ($h -lt 30) { $h = [math]::Min(30, $maxH) }
 
-        # Buffer >= fenetre (sinon SetWindowSize echoue)
-        $bufW = [math]::Max([Console]::BufferWidth, $w)
-        $bufH = [math]::Max([Console]::BufferHeight, $h)
-        if ($bufW -lt $w -or $bufH -lt $h) {
-            [Console]::SetBufferSize([math]::Max($bufW, $w), [math]::Max($bufH, $h))
-        }
+        # 1) agrandir buffer  2) fenetre  3) optionnel: buffer = fenetre (plus de scrollbar)
+        $growW = [math]::Max([Console]::BufferWidth, $w)
+        $growH = [math]::Max([Console]::BufferHeight, $h)
+        [Console]::SetBufferSize($growW, $growH)
         [Console]::SetWindowSize($w, $h)
+        if ($LockBuffer) {
+            [Console]::SetBufferSize($w, $h)
+        }
         [Console]::SetWindowPosition(0, 0)
     } catch {
         try {
             $raw = $Host.UI.RawUI
-            $bw = [math]::Max($Width, 100)
-            $bh = [math]::Max($Height, 40)
+            $mw = [math]::Min($Width, $raw.MaxWindowSize.Width)
+            $mh = [math]::Min($Height, $raw.MaxWindowSize.Height)
+            $bw = [math]::Max($Width, $mw)
+            $bh = [math]::Max($Height, $mh)
             $raw.BufferSize = New-Object System.Management.Automation.Host.Size ($bw, $bh)
-            $raw.WindowSize = New-Object System.Management.Automation.Host.Size (
-                [math]::Min($Width, $raw.MaxWindowSize.Width),
-                [math]::Min($Height, $raw.MaxWindowSize.Height)
-            )
+            $raw.WindowSize = New-Object System.Management.Automation.Host.Size ($mw, $mh)
+            if ($LockBuffer) {
+                $raw.BufferSize = New-Object System.Management.Automation.Host.Size ($mw, $mh)
+            }
             $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
         } catch {}
     }
 }
 
 function Show-ConsoleFromTop {
-    # Apres avoir dessine le contenu : hauteur = contenu, vue forcee ligne 0 (titre visible)
+    # Hauteur = menu entier + prompt ; buffer verrouille = titre ASCII toujours visible
     try {
-        # +4 : place pour la ligne Read-Host sans faire scroller le titre hors vue
-        $usedLines = [Console]::CursorTop + 4
-        $width = 110
-        Set-ConsoleSizeSafe -Width $width -Height $usedLines
+        $usedLines = [Console]::CursorTop + 5
+        if ($usedLines -lt 50) { $usedLines = 50 }
+        Set-ConsoleSizeSafe -Width 110 -Height $usedLines -LockBuffer
         [Console]::SetWindowPosition(0, 0)
-        $Host.UI.RawUI.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
+        try {
+            $Host.UI.RawUI.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
+        } catch {}
     } catch {
         try {
             $raw = $Host.UI.RawUI
-            $used = $raw.CursorPosition.Y + 4
-            Set-ConsoleSizeSafe -Width 110 -Height $used
+            $used = [math]::Max($raw.CursorPosition.Y + 5, 50)
+            Set-ConsoleSizeSafe -Width 110 -Height $used -LockBuffer
             $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
         } catch {}
     }
 }
 
 function Initialize-MenuConsole {
-    # Menu principal : taille provisoire puis Clear — le fit final se fait apres le dessin
+    # Grande fenetre provisoire ; fit exact + LockBuffer apres le dessin
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo RTX" } catch {}
-    Set-ConsoleSizeSafe -Width 110 -Height 48
+    Set-ConsoleSizeSafe -Width 110 -Height 55 -LockBuffer
     Clear-Host
     try {
         [Console]::SetCursorPosition(0, 0)
