@@ -584,6 +584,51 @@ function Get-NvidiaGpuInfo {
     return $script:CachedGpuInfo
 }
 
+function Get-SystemHwInfo {
+    if ($script:CachedSystemHw) { return $script:CachedSystemHw }
+
+    $gpu = Get-NvidiaGpuInfo
+    if (-not $gpu) { $gpu = "N/A" }
+
+    $cpu = "N/A"
+    try {
+        $cpuObj = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cpuObj -and $cpuObj.Name) {
+            $cpu = ($cpuObj.Name -replace '\s+', ' ').Trim()
+        }
+    } catch {}
+
+    $ramGB = "N/A"
+    try {
+        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
+        if ($cs -and $cs.TotalPhysicalMemory) {
+            $ramGB = "{0} GB" -f [math]::Round($cs.TotalPhysicalMemory / 1GB, 0)
+        }
+    } catch {}
+
+    $windows = "N/A"
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+        if ($os) {
+            $caption = ($os.Caption -replace '^Microsoft\s+', '').Trim()
+            $arch = $os.OSArchitecture
+            if ($os.Version) {
+                $windows = "{0} ({1}) — build {2}" -f $caption, $arch, $os.Version
+            } else {
+                $windows = "{0} ({1})" -f $caption, $arch
+            }
+        }
+    } catch {}
+
+    $script:CachedSystemHw = [pscustomobject]@{
+        Gpu     = $gpu
+        Cpu     = $cpu
+        Ram     = $ramGB
+        Windows = $windows
+    }
+    return $script:CachedSystemHw
+}
+
 function Show-Status {
     Write-Host "`n========================================================" -ForegroundColor DarkGray
     Write-Host $t.status_title -ForegroundColor Cyan
@@ -1255,12 +1300,21 @@ function Run-Benchmark {
     $badgeCtx     = if ($gainCtxE -gt 10)  { " [GAIN NET]" } else { "" }
     $badgeSpeed   = if ($gainSpeedE -gt 10){ " [GAIN NET]" } else { "" }
 
+    $hw = Get-SystemHwInfo
+    $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     $sepLine = "=" * 82
     $subLine = "-" * 82
 
     Write-Host ""
     Write-Host $sepLine -ForegroundColor DarkGray
-    Write-Host " RAPPORT DE PERFORMANCE OLLAMA (Modele : $testModel | Contexte : $benchCtx tokens)" -ForegroundColor Cyan
+    Write-Host " RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO" -ForegroundColor Cyan
+    Write-Host " Date     : $timestamp" -ForegroundColor DarkGray
+    Write-Host " Modele   : $testModel" -ForegroundColor DarkGray
+    Write-Host " Contexte : $benchCtx tokens" -ForegroundColor DarkGray
+    Write-Host " GPU      : $($hw.Gpu)" -ForegroundColor Green
+    Write-Host " CPU      : $($hw.Cpu)" -ForegroundColor Green
+    Write-Host " RAM      : $($hw.Ram)" -ForegroundColor Green
+    Write-Host " Windows  : $($hw.Windows)" -ForegroundColor Green
     Write-Host $sepLine -ForegroundColor DarkGray
     Write-Host (" {0,-26} | {1,18} | {2,14} | {3,13} " -f "CONFIGURATION", "GENERATION (t/s)", "GAIN VITESSE", "GAIN VRAM") -ForegroundColor Yellow
     Write-Host $subLine -ForegroundColor DarkGray
@@ -1289,7 +1343,6 @@ function Run-Benchmark {
 
     $saveChoice = Read-HostWithTimeout -Prompt $t.bench_save_prompt -TimeoutSec 20 -DefaultValue "N"
     if ($saveChoice -match '^(o|oui|y|yes|s|si|j|ja)') {
-        $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
         $desktopPath = [Environment]::GetFolderPath("Desktop")
         $filePath = Join-Path $desktopPath "Ollama_Turbo_Comparatif.txt"
 
@@ -1299,6 +1352,10 @@ function Run-Benchmark {
  Date     : $timestamp
  Modele   : $testModel
  Contexte : $benchCtx tokens
+ GPU      : $($hw.Gpu)
+ CPU      : $($hw.Cpu)
+ RAM      : $($hw.Ram)
+ Windows  : $($hw.Windows)
 ================================================================================
  CONFIGURATION              GENERATION (Tokens/s)   GAIN VITESSE    GAIN VRAM
 --------------------------------------------------------------------------------
