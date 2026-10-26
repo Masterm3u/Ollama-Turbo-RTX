@@ -4,7 +4,8 @@
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GPU: RTX 30/40/50](https://img.shields.io/badge/NVIDIA-RTX%2030%20%2F%2040%20%2F%2050-76B900?logo=nvidia)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
-[![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
+[![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/groupeplatinium)
 
 > **1-Click Hardware Acceleration for Ollama on Windows (NVIDIA RTX 30 / 40 / 50 Series)**
 
@@ -117,9 +118,18 @@ Demo GIF instructions: **[assets/README.md](assets/README.md)**.
 
 ---
 
+### ⭐ Support the project
+
+If this saved you time or VRAM:
+
+1. **Star the repo** → [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX) (helps others find it)
+2. **Buy me a coffee** → [buymeacoffee.com/groupeplatinium](https://buymeacoffee.com/groupeplatinium)
+
+<a href="https://buymeacoffee.com/groupeplatinium" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
+
 ### 👤 Author
 
-[Masterm3u](https://github.com/Masterm3u) — [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX)
+[Masterm3u](https://github.com/Masterm3u) / [groupeplatinium](https://buymeacoffee.com/groupeplatinium) — [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 
 ### 📄 License
 

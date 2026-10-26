@@ -76,7 +76,10 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
 PolyForm Noncommercial (personal/non-commercial free). No telemetry.
 
 If you try it, please reply with GPU + model + your Stock/Speed/Context table — curious how this scales on 3090/4090/5090 etc.
+
+If it helped: a GitHub star goes a long way, and optional coffee is at https://buymeacoffee.com/groupeplatinium
 ```
+
 
 ---
 
@@ -121,4 +124,6 @@ Quick FAQ:
 - Menu [4] = live bench — please reply with GPU + model + table
 - Full raw report: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/benchmarks/RTX5080_qwen-64k_2026-10-26.txt
 - Stars help others find it: https://github.com/Masterm3u/Ollama-Turbo-RTX
+- Optional support: https://buymeacoffee.com/groupeplatinium
 ```
+
