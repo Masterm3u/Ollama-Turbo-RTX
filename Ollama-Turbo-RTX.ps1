@@ -5,15 +5,6 @@
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Dimensionnement provisoire (le fit final = buffer verrouille apres dessin du menu)
-try {
-    $rawUI = $Host.UI.RawUI
-    $newSize = New-Object System.Management.Automation.Host.Size(110, 55)
-    $rawUI.BufferSize = $newSize
-    $rawUI.WindowSize = $newSize
-    [Console]::SetWindowPosition(0, 0)
-} catch {}
-
 $i18n = @{
     en = @{
         admin_req      = "[!] Administrator privileges required to configure system environment variables."
@@ -953,79 +944,73 @@ function New-HeavyStressPrompt {
 # Alias de compatibilite
 function New-BenchmarkStressPrompt { return (New-HeavyStressPrompt) }
 
+# Win32 : seul moyen fiable de mettre la fenetre en pleine hauteur (Windows Terminal ignore SetWindowSize)
+if (-not ("OllamaTurboWin" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class OllamaTurboWin {
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
+    public const int SW_MAXIMIZE = 3;
+}
+"@
+}
+
+function Maximize-ConsoleWindow {
+    try {
+        $hwnd = [OllamaTurboWin]::GetConsoleWindow()
+        if ($hwnd -eq [IntPtr]::Zero) {
+            $hwnd = (Get-Process -Id $PID -ErrorAction SilentlyContinue).MainWindowHandle
+        }
+        if ($hwnd -ne [IntPtr]::Zero) {
+            [void][OllamaTurboWin]::ShowWindow($hwnd, [OllamaTurboWin]::SW_MAXIMIZE)
+            Start-Sleep -Milliseconds 200
+        }
+    } catch {}
+}
+
 function Set-ConsoleSizeSafe {
     param(
-        [int]$Width = 110,
-        [int]$Height = 45,
-        [switch]$LockBuffer  # buffer = fenetre UNIQUEMENT sur ecran vide (avant Clear/dessin)
+        [int]$Width = 120,
+        [int]$Height = 50
     )
     try {
         $maxW = [Console]::LargestWindowWidth
         $maxH = [Console]::LargestWindowHeight
         if ($maxW -lt 40) { $maxW = 120 }
-        if ($maxH -lt 20) { $maxH = 60 }
-
+        if ($maxH -lt 20) { $maxH = 50 }
         $w = [math]::Min($Width, $maxW)
         $h = [math]::Min($Height, $maxH)
-        if ($w -lt 80) { $w = [math]::Min(80, $maxW) }
-        if ($h -lt 35) { $h = [math]::Min(35, $maxH) }
-
-        # Toujours agrandir d'abord (reduire le buffer APRES un Write-Host coupe le HAUT = titre perdu)
         $growW = [math]::Max([Console]::BufferWidth, $w)
-        $growH = [math]::Max([Console]::BufferHeight, $h)
+        $growH = [math]::Max([Console]::BufferHeight, [math]::Max($h, 80))
         [Console]::SetBufferSize($growW, $growH)
         [Console]::SetWindowSize($w, $h)
-        if ($LockBuffer) {
-            [Console]::SetBufferSize($w, $h)
-        }
         [Console]::SetWindowPosition(0, 0)
     } catch {
         try {
             $raw = $Host.UI.RawUI
             $mw = [math]::Min($Width, $raw.MaxWindowSize.Width)
             $mh = [math]::Min($Height, $raw.MaxWindowSize.Height)
-            $bw = [math]::Max($Width, $mw)
-            $bh = [math]::Max($Height, $mh)
-            $raw.BufferSize = New-Object System.Management.Automation.Host.Size ($bw, $bh)
+            $raw.BufferSize = New-Object System.Management.Automation.Host.Size ([math]::Max($mw, 120), [math]::Max($mh, 80))
             $raw.WindowSize = New-Object System.Management.Automation.Host.Size ($mw, $mh)
-            if ($LockBuffer) {
-                $raw.BufferSize = New-Object System.Management.Automation.Host.Size ($mw, $mh)
-            }
-            $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
-        } catch {}
-    }
-}
-
-function Show-ConsoleFromTop {
-    # Apres dessin : NE JAMAIS reduire le buffer (Windows tronque le haut = ASCII disparait).
-    # On agrandit seulement si le prompt risque de scroller, puis on force la vue en haut.
-    try {
-        $need = [Console]::CursorTop + 6
-        $winH = [Console]::WindowHeight
-        if ($need -gt $winH) {
-            # Agrandir sans LockBuffer (pas de shrink)
-            Set-ConsoleSizeSafe -Width 110 -Height $need
-        }
-        [Console]::SetWindowPosition(0, 0)
-        try {
-            $Host.UI.RawUI.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
-        } catch {}
-    } catch {
-        try {
-            $raw = $Host.UI.RawUI
-            $need = $raw.CursorPosition.Y + 6
-            if ($need -gt $raw.WindowSize.Height) {
-                Set-ConsoleSizeSafe -Width 110 -Height $need
-            }
             $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
         } catch {}
     }
 }
 
 function Initialize-MenuConsole {
-    # Dimensionner AVANT Clear/dessin ( LockBuffer OK ici : ecran encore vide )
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo RTX" } catch {}
-    Set-ConsoleSizeSafe -Width 110 -Height 56 -LockBuffer
+    Maximize-ConsoleWindow
+    # Apres maximize : remplir toute la hauteur disponible (pas de petite fenetre)
+    try {
+        $h = [math]::Max(50, [Console]::LargestWindowHeight)
+        $w = [math]::Max(100, [math]::Min(120, [Console]::LargestWindowWidth))
+        Set-ConsoleSizeSafe -Width $w -Height $h
+    } catch {
+        Set-ConsoleSizeSafe -Width 120 -Height 50
+    }
     Clear-Host
     try {
         [Console]::SetCursorPosition(0, 0)
@@ -1034,13 +1019,12 @@ function Initialize-MenuConsole {
 }
 
 function Initialize-BenchConsole {
-    # Bench : partir du haut (pas de maximize = pas de bande noire inutile)
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo Benchmark [ADMIN]" } catch {}
-    Set-ConsoleSizeSafe -Width 120 -Height 45
-    # Buffer profond pour scroller l'historique pendant le bench, vue au debut
+    Maximize-ConsoleWindow
     try {
+        $h = [math]::Max(45, [Console]::LargestWindowHeight)
+        Set-ConsoleSizeSafe -Width 120 -Height $h
         [Console]::SetBufferSize(120, [math]::Max(3000, [Console]::BufferHeight))
-        [Console]::SetWindowPosition(0, 0)
     } catch {}
     Clear-Host
     try {
@@ -1360,25 +1344,19 @@ if ($Action -eq "bench")   { Run-Benchmark; Stop-BenchmarkHost }
 
 do {
     Initialize-MenuConsole
-    # Banner sans backticks (@" "@ les interpretent) — here-string literal
+    # Here-string literal : backticks de l'ASCII restent intacts
     Write-Host @'
-  ============================================================
-     ____  _ _                        _____            _
-    / __ \| | |                      |_   _|          | |
-   | |  | | | | __ _ _ __ ___   __ _   | |_   _ _ __  | |__   ___
-   | |  | | | |/ _  |  _   _ \ / _  |  | | | | |  __| |  _ \ / _ \
-   | |__| | | | (_| | | | | | | (_| |  | | |_| | |    | |_) | (_) |
-    \____/|_|_|\__,_|_| |_| |_|\__,_|  \_/\__,_|_|    |_.__/ \___/
-                     T U R B O   R T X
-        1-Click Optimizer  ·  NVIDIA RTX 30 / 40 / 50
-  ============================================================
+   ___  _ _                        _____            _
+  / _ \| | |                      |_   _|          | |
+ / / \ \ | | __ _ _ __ ___   __ _   | |_   _ _ __  | |__   ___
+ | | | | | |/ _` | '_ ` _ \ / _` |  | | | | | '__| | '_ \ / _ \
+ \ \_/ / | | (_| | | | | | | (_| |  | | |_| | |    | |_) | (_) |
+  \___/|_|_|\__,_|_| |_| |_|\__,_|  \_/\__,_|_|    |_.__/ \___/
+      Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
 
     Show-Status
     Show-Menu
-
-    # Ne jamais reduire le buffer ici (sinon Windows coupe le titre en haut)
-    Show-ConsoleFromTop
 
     $choice = Read-Host $t.prompt_choice
 
