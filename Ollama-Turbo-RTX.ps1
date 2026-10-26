@@ -1394,11 +1394,12 @@ do {
     Initialize-MenuConsole
     # Here-string literal : backticks de l'ASCII restent intacts
     Write-Host @'
-   ___  _ _                       _____ _
-  / _ \| | | __ _ _ __ ___  __ _ |_   _| |_ _ __ _ __   ___
- | | | | | |/ _` | '_ ` _ \/ _` |  | | | | | '__| '_ \ / _ \
- | |_| | | | (_| | | | | | | (_| |  | | | |_| |  | |_) | (_) |
-  \___/|_|_|\__,_|_| |_| |_|\__,_|  \_/  \__,_|  |_.__/ \___/
+        ____
+      .'    '.     _ _                        _____ _
+     /  o  o  \   | | | __ _ _ __ ___   __ _ |_   _| |_ _ __ _ __   ___
+    |    --    |  | | |/ _` | '_ ` _ \ / _` |  | | | | | '__| '_ \ / _ \
+     \        /   | | | (_| | | | | | | (_| |  | | | |_| |  | |_) | (_) |
+      '.____.'    |_|_|\__,_|_| |_| |_|\__,_|  \_/  \__,_|  |_.__/ \___/
       Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
     Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
