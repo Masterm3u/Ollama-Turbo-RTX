@@ -1,6 +1,6 @@
 # Reddit launch kit (English)
 
-Post when you have: (1) MIT LICENSE live, (2) a real `assets/demo.gif`, (3) your own bench numbers pasted into the README.
+Post when you have: (1) LICENSE live, (2) a real `assets/demo.gif`, (3) your own bench numbers pasted into the README.
 
 ## Target subs
 
@@ -55,7 +55,7 @@ To solve this with zero friction, I built **Ollama-Turbo**: an open-source, mult
 ### Repo
 https://github.com/Masterm3u/Ollama-Turbo-RTX
 
-MIT licensed. No telemetry. Happy to take feedback, especially real bench dumps from your cards (model + VRAM + Stock/Speed/Context t/s).
+PolyForm Noncommercial (free for personal/non-commercial use). No telemetry. Happy to take feedback, especially real bench dumps from your cards (model + VRAM + Stock/Speed/Context t/s).
 
 *(Optional: paste your own Stock | Speed | Context table here)*
 ```
@@ -65,7 +65,7 @@ MIT licensed. No telemetry. Happy to take feedback, especially real bench dumps 
 ## Short body (r/PowerShell)
 
 ```
-Built a MIT-licensed 1-click PowerShell tool that sets Ollama Machine env vars on Windows RTX (Flash Attention + optional Q8 KV), self-elevates, restarts the daemon silently, and runs a comparative inference benchmark.
+Built a 1-click PowerShell tool (PolyForm Noncommercial) that sets Ollama Machine env vars on Windows RTX (Flash Attention + optional Q8 KV), self-elevates, restarts the daemon silently, and runs a comparative inference benchmark.
 
 Install:
 
@@ -87,7 +87,7 @@ I open-sourced a 1-click script that enables FA + optional Q8 KV (~50% context V
 
     irm https://masterm3u.github.io/turbo | iex
 
-https://github.com/Masterm3u/Ollama-Turbo-RTX (MIT)
+https://github.com/Masterm3u/Ollama-Turbo-RTX (PolyForm Noncommercial)
 ```
 
 ---
