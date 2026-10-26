@@ -1,0 +1,6 @@
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+Ollama_Turbo_Comparatif.txt
+*.bak
