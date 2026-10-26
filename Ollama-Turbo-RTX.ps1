@@ -957,7 +957,7 @@ function Set-ConsoleSizeSafe {
     param(
         [int]$Width = 110,
         [int]$Height = 45,
-        [switch]$LockBuffer  # buffer = fenetre : empêche le scroll (titre reste visible sous WT)
+        [switch]$LockBuffer  # buffer = fenetre UNIQUEMENT sur ecran vide (avant Clear/dessin)
     )
     try {
         $maxW = [Console]::LargestWindowWidth
@@ -968,9 +968,9 @@ function Set-ConsoleSizeSafe {
         $w = [math]::Min($Width, $maxW)
         $h = [math]::Min($Height, $maxH)
         if ($w -lt 80) { $w = [math]::Min(80, $maxW) }
-        if ($h -lt 30) { $h = [math]::Min(30, $maxH) }
+        if ($h -lt 35) { $h = [math]::Min(35, $maxH) }
 
-        # 1) agrandir buffer  2) fenetre  3) optionnel: buffer = fenetre (plus de scrollbar)
+        # Toujours agrandir d'abord (reduire le buffer APRES un Write-Host coupe le HAUT = titre perdu)
         $growW = [math]::Max([Console]::BufferWidth, $w)
         $growH = [math]::Max([Console]::BufferHeight, $h)
         [Console]::SetBufferSize($growW, $growH)
@@ -997,11 +997,15 @@ function Set-ConsoleSizeSafe {
 }
 
 function Show-ConsoleFromTop {
-    # Hauteur = menu entier + prompt ; buffer verrouille = titre ASCII toujours visible
+    # Apres dessin : NE JAMAIS reduire le buffer (Windows tronque le haut = ASCII disparait).
+    # On agrandit seulement si le prompt risque de scroller, puis on force la vue en haut.
     try {
-        $usedLines = [Console]::CursorTop + 5
-        if ($usedLines -lt 50) { $usedLines = 50 }
-        Set-ConsoleSizeSafe -Width 110 -Height $usedLines -LockBuffer
+        $need = [Console]::CursorTop + 6
+        $winH = [Console]::WindowHeight
+        if ($need -gt $winH) {
+            # Agrandir sans LockBuffer (pas de shrink)
+            Set-ConsoleSizeSafe -Width 110 -Height $need
+        }
         [Console]::SetWindowPosition(0, 0)
         try {
             $Host.UI.RawUI.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
@@ -1009,17 +1013,19 @@ function Show-ConsoleFromTop {
     } catch {
         try {
             $raw = $Host.UI.RawUI
-            $used = [math]::Max($raw.CursorPosition.Y + 5, 50)
-            Set-ConsoleSizeSafe -Width 110 -Height $used -LockBuffer
+            $need = $raw.CursorPosition.Y + 6
+            if ($need -gt $raw.WindowSize.Height) {
+                Set-ConsoleSizeSafe -Width 110 -Height $need
+            }
             $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
         } catch {}
     }
 }
 
 function Initialize-MenuConsole {
-    # Grande fenetre provisoire ; fit exact + LockBuffer apres le dessin
+    # Dimensionner AVANT Clear/dessin ( LockBuffer OK ici : ecran encore vide )
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo RTX" } catch {}
-    Set-ConsoleSizeSafe -Width 110 -Height 55 -LockBuffer
+    Set-ConsoleSizeSafe -Width 110 -Height 56 -LockBuffer
     Clear-Host
     try {
         [Console]::SetCursorPosition(0, 0)
@@ -1354,20 +1360,24 @@ if ($Action -eq "bench")   { Run-Benchmark; Stop-BenchmarkHost }
 
 do {
     Initialize-MenuConsole
-    Write-Host @"
-   ___  _ _                        _____            _           
-  / _ \| | |                      |_   _|          | |          
- / / \ \ | | __ _ _ __ ___   __ _   | |_   _ _ __  | |__   ___  
- | | | | | |/ _` | '_ ` _ \ / _` |  | | | | | '__| | '_ \ / _ \ 
- \ \_/ / | | (_| | | | | | | (_| |  | | |_| | |    | |_) | (_) |
-  \___/|_|_|\__,_|_| |_| |_|\__,_|  \_/\__,_|_|    |_.__/ \___/ 
-      Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
-"@ -ForegroundColor Cyan
+    # Banner sans backticks (@" "@ les interpretent) — here-string literal
+    Write-Host @'
+  ============================================================
+     ____  _ _                        _____            _
+    / __ \| | |                      |_   _|          | |
+   | |  | | | | __ _ _ __ ___   __ _   | |_   _ _ __  | |__   ___
+   | |  | | | |/ _  |  _   _ \ / _  |  | | | | |  __| |  _ \ / _ \
+   | |__| | | | (_| | | | | | | (_| |  | | |_| | |    | |_) | (_) |
+    \____/|_|_|\__,_|_| |_| |_|\__,_|  \_/\__,_|_|    |_.__/ \___/
+                     T U R B O   R T X
+        1-Click Optimizer  ·  NVIDIA RTX 30 / 40 / 50
+  ============================================================
+'@ -ForegroundColor Cyan
 
     Show-Status
     Show-Menu
 
-    # Hauteur = contenu exact ; vue forcee en haut pour voir le titre ASCII
+    # Ne jamais reduire le buffer ici (sinon Windows coupe le titre en haut)
     Show-ConsoleFromTop
 
     $choice = Read-Host $t.prompt_choice
