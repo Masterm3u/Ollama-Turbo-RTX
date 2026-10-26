@@ -1,10 +1,21 @@
-﻿param (
-    [string]$Action = "",
-    [string]$Lang = ""
+﻿# =============================================================================
+# Ollama-Turbo-RTX — optimiseur 1-clic pour Ollama sous Windows (GPU NVIDIA RTX)
+# -----------------------------------------------------------------------------
+# Ce script peut modifier le SYSTEME (avec elevation Admin) :
+#   1) Variables d'environnement Machine : OLLAMA_FLASH_ATTENTION, OLLAMA_KV_CACHE_TYPE, OLLAMA_HOST
+#   2) Redemarrage des process locaux ollama / llama-server (libere la VRAM)
+#   3) Appels API locaux uniquement : http://127.0.0.1:11434 (benchmark)
+# Il n'installe aucun .exe tiers, n'envoie aucune telemetrie, ne touche pas au registre hors env Machine.
+# =============================================================================
+param (
+    [string]$Action = "",   # install | install-speed | restore | status | bench (mode CLI)
+    [string]$Lang = ""      # en | fr | es | de — sinon auto-detect OS
 )
 
+# Affichage UTF-8 pour accents / bandeau ASCII dans la console Windows
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Dictionnaires d'interface (textes menu / messages) — aucune action systeme ici
 $i18n = @{
     en = @{
         admin_req      = "[!] Administrator privileges required to configure system environment variables."
@@ -356,6 +367,7 @@ $i18n = @{
     }
 }
 
+# Choisit la langue UI : parametre -Lang, sinon langue Windows, sinon anglais
 function Resolve-Language {
     if ($Lang -and $i18n.ContainsKey($Lang.ToLower())) {
         return $Lang.ToLower()
@@ -372,6 +384,7 @@ function Resolve-Language {
 $CurrentLang = Resolve-Language
 $t = $i18n[$CurrentLang]
 
+# Chemin disque du .ps1 courant (requis pour relancer en Admin via -File)
 function Get-ScriptPath {
     if ($PSCommandPath) { return $PSCommandPath }
     if ($MyInvocation.PSCommandPath) { return $MyInvocation.PSCommandPath }
@@ -381,10 +394,13 @@ function Get-ScriptPath {
     return $null
 }
 
+# True si cette session PowerShell tourne deja avec privileges Administrateur
 function Test-IsAdmin {
     return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+# Si pas Admin : ouvre UNE nouvelle fenetre PowerShell elevee (UAC) puis quitte celle-ci.
+# Necessaire car seules les sessions Admin peuvent ecrire les variables d'env. Machine.
 function Check-Admin {
     if (Test-IsAdmin) { return }
 
@@ -402,15 +418,18 @@ function Check-Admin {
     Exit
 }
 
+# ECRITURE SYSTEME critique :
+# - Persiste OLLAMA_* dans l'environnement Machine (tous les futurs process Ollama)
+# - Met a jour aussi $env: de CETTE session (sinon ollama.exe enfant ignorerait le registre)
+# FlashAttention / KvCacheType vides = suppression du flag (retour stock)
 function Sync-OllamaProcessEnv {
-    # Les enfants (ollama.exe) heritent du process parent, PAS du registre Machine.
-    # Il faut donc synchroniser aussi $env: apres SetEnvironmentVariable Machine.
     param(
         [AllowNull()][string]$FlashAttention,
         [AllowNull()][string]$KvCacheType,
         [AllowNull()][string]$HostBind = "127.0.0.1:11434"
     )
 
+    # OLLAMA_FLASH_ATTENTION=1 → active Flash Attention (Tensor Cores) dans le moteur llama.cpp d'Ollama
     if ([string]::IsNullOrEmpty($FlashAttention)) {
         [System.Environment]::SetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', $null, 'Machine')
         Remove-Item Env:\OLLAMA_FLASH_ATTENTION -ErrorAction SilentlyContinue
@@ -419,6 +438,7 @@ function Sync-OllamaProcessEnv {
         $env:OLLAMA_FLASH_ATTENTION = $FlashAttention
     }
 
+    # OLLAMA_KV_CACHE_TYPE=q8_0 → cache KV quantifie (~50% VRAM contexte) ; vide = FP16 stock
     if ([string]::IsNullOrEmpty($KvCacheType)) {
         [System.Environment]::SetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', $null, 'Machine')
         Remove-Item Env:\OLLAMA_KV_CACHE_TYPE -ErrorAction SilentlyContinue
@@ -427,6 +447,7 @@ function Sync-OllamaProcessEnv {
         $env:OLLAMA_KV_CACHE_TYPE = $KvCacheType
     }
 
+    # OLLAMA_HOST → adresse d'ecoute locale de l'API (defaut securise 127.0.0.1:11434)
     if ([string]::IsNullOrEmpty($HostBind)) {
         [System.Environment]::SetEnvironmentVariable('OLLAMA_HOST', $null, 'Machine')
         Remove-Item Env:\OLLAMA_HOST -ErrorAction SilentlyContinue
@@ -436,6 +457,7 @@ function Sync-OllamaProcessEnv {
     }
 }
 
+# Attend que l'API locale Ollama reponde (GET /api/tags) — aucun trafic Internet
 function Wait-OllamaReady {
     param([int]$TimeoutSec = 45)
     Write-Host $t.bench_wait -ForegroundColor Cyan
@@ -455,9 +477,9 @@ function Wait-OllamaReady {
     return $false
 }
 
+# Tue les process locaux ollama / "ollama app" / llama-server pour liberer la VRAM GPU.
+# Sans ca, un redemarrage partiel laisse d'anciens runners CUDA et provoque des OOM.
 function Stop-OllamaSilent {
-    # Arret silencieux : app + serveur + runners CUDA orphelins (llama-server).
-    # Sans tuer llama-server, la VRAM reste occupee et le bench tombe en 500 OOM.
     $names = @("ollama*", "ollama app*", "llama-server")
     $procs = Get-Process -Name $names -ErrorAction SilentlyContinue
     if ($procs) {
@@ -472,6 +494,7 @@ function Stop-OllamaSilent {
     return $false
 }
 
+# Decharge les modeles encore en VRAM via l'API locale, puis tue les runners CUDA restants
 function Clear-OllamaGpuRunners {
     # Decharge les modeles via API puis tue les runners CUDA restants.
     try {
@@ -488,9 +511,8 @@ function Clear-OllamaGpuRunners {
     Start-Sleep -Milliseconds 800
 }
 
+# Relance Ollama en arriere-plan (fenetre masquee) pour prendre en compte les nouveaux flags env
 function Start-OllamaSilent {
-    # Demarrage transparent : UI masquee (hidden / --hide) + pas de fenetre console.
-    # --fast-startup evite les pop-ups de mise a jour au lancement.
     $appPath = "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
     $cliPath = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
     if (-not (Test-Path $cliPath)) {
@@ -512,6 +534,7 @@ function Start-OllamaSilent {
     return $false
 }
 
+# Cycle complet : stop process Ollama → start silencieux → optionnellement attendre /api/tags
 function Restart-Ollama {
     param([switch]$WaitReady)
 
@@ -533,6 +556,7 @@ function Restart-Ollama {
     }
 }
 
+# Lit les flags Machine et deduit le mode UI : context | speed | stock
 function Get-ActiveTurboMode {
     $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
     $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
@@ -541,13 +565,13 @@ function Get-ActiveTurboMode {
     return "stock"
 }
 
+# Detecte le GPU NVIDIA (nvidia-smi de preference) pour l'affichage statut / rapport — lecture seule
 function Get-NvidiaGpuInfo {
     if ($script:CachedGpuInfo) { return $script:CachedGpuInfo }
 
     $name = $null
     $vramGB = $null
 
-    # nvidia-smi : nom exact + VRAM fiable
     $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
     if ($smi) {
         try {
@@ -588,6 +612,7 @@ function Get-NvidiaGpuInfo {
     return $script:CachedGpuInfo
 }
 
+# Snapshot materiel (GPU/CPU/RAM/Windows) pour l'en-tete du rapport de benchmark — lecture seule
 function Get-SystemHwInfo {
     if ($script:CachedSystemHw) { return $script:CachedSystemHw }
 
@@ -714,6 +739,8 @@ function Show-Menu {
     Write-Host ""
 }
 
+# MENU [1]/[2] — applique les flags Turbo sur la machine puis redemarre Ollama
+#   context = FA + Q8 KV | speed = FA seul (KV FP16 stock)
 function Install-Optimizations {
     param(
         [ValidateSet("context", "speed")]
@@ -722,6 +749,7 @@ function Install-Optimizations {
 
     Check-Admin
     Write-Host "`n$($t.gpu_detect)" -ForegroundColor Cyan
+    # Verification lecture seule : refuse d'optimiser sans GPU NVIDIA visible
     $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" -and $_.Name -notlike "*Audio*" } | Select-Object -First 1
 
     if (-not $gpu) {
@@ -731,6 +759,7 @@ function Install-Optimizations {
 
     $vramGB = [math]::Round($gpu.AdapterRAM / 1GB, 1)
     if ($vramGB -le 4) {
+        # Fallback registre : Win32 AdapterRAM est souvent tronque a 4 Go sur les grosses cartes
         try {
             $regPath = "HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"
             $qwMemorySize = (Get-ItemProperty -Path $regPath -Name "HardwareInformation.qwMemorySize" -ErrorAction SilentlyContinue)."HardwareInformation.qwMemorySize"
@@ -750,10 +779,12 @@ function Install-Optimizations {
     Write-Host $t.applying -ForegroundColor Cyan
 
     if ($Mode -eq "context") {
+        # Turbo Contexte : Flash Attention ON + KV q8_0 (economie VRAM contexte)
         Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType 'q8_0' -HostBind '127.0.0.1:11434'
         Write-Host $t.fa_set -ForegroundColor Green
         Write-Host $t.kv_set -ForegroundColor Green
     } else {
+        # Turbo Vitesse : Flash Attention ON, KV laisse en FP16 (pas de q8_0)
         Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType $null -HostBind '127.0.0.1:11434'
         Write-Host $t.fa_set -ForegroundColor Green
         Write-Host $t.kv_clear -ForegroundColor Yellow
@@ -765,6 +796,7 @@ function Install-Optimizations {
     Show-Status
 }
 
+# MENU [3] — efface tous les flags Turbo (retour Ollama stock) puis redemarre
 function Restore-Defaults {
     Check-Admin
     Write-Host "`n$($t.revert_title)" -ForegroundColor Cyan
@@ -775,6 +807,7 @@ function Restore-Defaults {
     Show-Status
 }
 
+# MENU [4] — ouvre une fenetre Admin separee qui execute -Action bench (UAC)
 function Start-BenchmarkWindow {
     $scriptPath = Get-ScriptPath
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
@@ -782,10 +815,6 @@ function Start-BenchmarkWindow {
         return
     }
 
-    # Toujours -Verb RunAs : Start-Process SANS RunAs ne garantit PAS l'elevation
-    # (meme depuis un parent admin, selon le contexte / Cursor / .bat).
-    # Sans -NoExit : la fenetre disparait a la fin du bench.
-    # ArgumentList en tableau = parsing fiable avec UAC (chemins avec espaces OK).
     $argList = @(
         "-NoProfile"
         "-ExecutionPolicy", "Bypass"
@@ -822,6 +851,8 @@ function Get-OllamaApiErrorDetail {
     return $ErrorRecord.Exception.Message
 }
 
+# POST local /api/generate — mesure prompt_eval + eval (t/s). keep_alive=0 evite le cache modele.
+# Aucun appel Internet : uniquement 127.0.0.1:11434
 function Invoke-OllamaGenerateStats {
     param(
         [string]$Model,
@@ -1019,6 +1050,8 @@ function Select-BenchmarkModel {
     return $defaultChoice
 }
 
+# Construit un prompt massif (~22k chars) avec GUIDs aleatoires a CHAQUE appel
+# → aucun prefixe commun = pas de Prompt Cache Hit qui fausserait les t/s
 function New-HeavyStressPrompt {
     # ~22k+ caracteres uniques (~5k tokens) pour forcer un vrai calcul attention O(N^2).
     # Regenere a CHAQUE appel : aucun prefixe reutilisable pour le Prompt Caching Ollama.
@@ -1054,8 +1087,8 @@ function New-HeavyStressPrompt {
 # Alias de compatibilite
 function New-BenchmarkStressPrompt { return (New-HeavyStressPrompt) }
 
-# Sous Windows Terminal, GetConsoleWindow() renvoie une pseudo-fenetre invisible et
-# SetBufferSize casse le defilement : on redimensionne la vraie fenetre via Win32.
+# API Win32 user32/kernel32 : redimensionner la VRAIE fenetre Terminal (pas le buffer console)
+# — lecture/positionnement UI uniquement, aucune donnee reseau
 if (-not ("OllamaTurboWin" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
@@ -1078,11 +1111,11 @@ public static class OllamaTurboWin {
 "@
 }
 
+# Retrouve le handle HWND de la fenetre visible (conhost classique ou Windows Terminal)
 function Get-TerminalWindowHandle {
     if (-not $env:WT_SESSION) {
         return [OllamaTurboWin]::GetConsoleWindow()
     }
-    # Windows Terminal : la fenetre visible est celle au premier plan au lancement
     $hwnd = [OllamaTurboWin]::GetForegroundWindow()
     if ($hwnd -eq [IntPtr]::Zero) { return [IntPtr]::Zero }
     $procId = [uint32]0
@@ -1092,6 +1125,7 @@ function Get-TerminalWindowHandle {
     return [IntPtr]::Zero
 }
 
+# Agrandit la fenetre a la hauteur utile de l'ecran (une seule fois) pour voir le titre ASCII
 function Resize-TerminalFullHeight {
     if ($script:TerminalResized) { return }
     $script:TerminalResized = $true
@@ -1113,7 +1147,6 @@ function Resize-TerminalFullHeight {
         $rowsBefore = [Console]::WindowHeight
         [void][OllamaTurboWin]::MoveWindow($hwnd, $left, $work.Top, $width, $work.Bottom - $work.Top, $true)
 
-        # Laisser le terminal recalculer ses lignes avant de dessiner
         for ($i = 0; $i -lt 20 -and [Console]::WindowHeight -eq $rowsBefore; $i++) {
             Start-Sleep -Milliseconds 50
         }
@@ -1132,6 +1165,8 @@ function Initialize-BenchConsole {
     Clear-Host
 }
 
+# MENU [4] / -Action bench — compare Stock vs FA vs FA+Q8 (moyenne de 3 passes chacune)
+# Modifie temporairement les flags Machine pendant le test, puis RESTAURE l'etat initial.
 function Run-Benchmark {
     Check-Admin
     Initialize-BenchConsole
@@ -1144,6 +1179,7 @@ function Run-Benchmark {
         return
     }
 
+    # Sauvegarde stricte : on remettra exactement ces valeurs a la fin du bench
     $origFA = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
     $origKV = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
     $origHost = [System.Environment]::GetEnvironmentVariable('OLLAMA_HOST', 'Machine')
@@ -1169,12 +1205,12 @@ function Run-Benchmark {
     Write-Host ($t.bench_prompt_info -f $samplePrompt.Length) -ForegroundColor DarkGray
     Write-Host "  [*] Prompt regenere a chaque passe (~5k tokens uniques) + keep_alive=0" -ForegroundColor DarkGray
 
+    # Pour UN mode donne : 1 warm-up (ignore) + 3 generations chronometrees → moyenne t/s
     function Execute-3Passes {
         param([string]$PhaseName)
         Write-Host "`n[*] $PhaseName (3 passes en cours)..." -ForegroundColor Yellow
         Write-Host "  [*] Cache bust: New-HeavyStressPrompt() + keep_alive=0 (attention O(N^2) reelle)" -ForegroundColor DarkGray
 
-        # Warm-up CUDA / poids avec prompt lourd unique, puis purge
         Write-Host "  $($t.bench_warmup)" -ForegroundColor DarkGray
         $warmPrompt = New-HeavyStressPrompt
         $warm = Invoke-OllamaGenerateStats -Model $testModel -Prompt $warmPrompt -NumPredict 16 -NumCtx $benchCtx -KeepAlive 0
@@ -1253,41 +1289,34 @@ function Run-Benchmark {
         return "Yellow"
     }
 
-    # =========================================================================
-    # PHASE 1/3 : STOCK
-    # =========================================================================
+    # ----- Phase 1/3 : reference Windows stock (pas de FA, pas de Q8) -----
     Write-Host "`n>>> ETAPE 1/3 : STOCK (aucune optimisation)..." -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention $null -KvCacheType $null -HostBind '127.0.0.1:11434'
     Clear-OllamaGpuRunners
     Restart-Ollama -WaitReady
     $resStock = Execute-3Passes -PhaseName "Mesure Mode STOCK"
 
-    # =========================================================================
-    # PHASE 2/3 : TURBO VITESSE PURE (FA seul)
-    # =========================================================================
+    # ----- Phase 2/3 : Flash Attention seul (KV FP16) -----
     Write-Host "`n>>> ETAPE 2/3 : TURBO VITESSE PURE (Flash Attention seul)..." -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType $null -HostBind '127.0.0.1:11434'
     Clear-OllamaGpuRunners
     Restart-Ollama -WaitReady
     $resSpeed = Execute-3Passes -PhaseName "Mesure Mode TURBO VITESSE PURE"
 
-    # =========================================================================
-    # PHASE 3/3 : TURBO CONTEXTE (FA + Q8)
-    # =========================================================================
+    # ----- Phase 3/3 : Flash Attention + KV q8_0 -----
     Write-Host "`n>>> ETAPE 3/3 : TURBO CONTEXTE (Flash Attention + Q8)..." -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType 'q8_0' -HostBind '127.0.0.1:11434'
     Clear-OllamaGpuRunners
     Restart-Ollama -WaitReady
     $resContext = Execute-3Passes -PhaseName "Mesure Mode TURBO CONTEXTE"
 
-    # =========================================================================
-    # RESTAURATION
-    # =========================================================================
+    # ----- Fin de mesure : remet EXACTEMENT les flags Machine d'avant le bench -----
     Write-Host "`n[*] Restauration de l'etat initial de votre machine..." -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention $origFA -KvCacheType $origKV -HostBind $origHost
     Restart-Ollama -WaitReady
 
-        $gainSpeedE = Get-GainPct -Base $resStock.Eval -Value $resSpeed.Eval
+    # Calcul des gains % vs Stock (moyennes des 3 passes)
+    $gainSpeedE = Get-GainPct -Base $resStock.Eval -Value $resSpeed.Eval
     $gainCtxE   = Get-GainPct -Base $resStock.Eval -Value $resContext.Eval
 
     $bestMode = "Stock"
@@ -1453,15 +1482,17 @@ function Select-Language {
     $script:t = $i18n[$script:CurrentLang]
 }
 
+# Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / fenetre bench
 if ($Action -eq "install" -or $Action -eq "install-context") { Install-Optimizations -Mode "context"; Exit }
 if ($Action -eq "install-speed") { Install-Optimizations -Mode "speed"; Exit }
 if ($Action -eq "restore") { Restore-Defaults; Exit }
 if ($Action -eq "status")  { Show-Status; Exit }
 if ($Action -eq "bench")   { Run-Benchmark; Stop-BenchmarkHost }
 
+# Boucle menu interactive (affichage + choix 1-5 / Q) — aucune action systeme tant que l'usager n'a pas choisi
 do {
     Initialize-MenuConsole
-    # Here-string literal : backticks de l'ASCII restent intacts
+    # Here-string LITERAL (@' '@) : les backticks de l'ASCII art ne sont pas interpretes par PowerShell
     Write-Host @'
         ____
       .'    '.     _ _                        _____ _

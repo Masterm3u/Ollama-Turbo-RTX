@@ -30,15 +30,13 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Current `Ollama-Turbo-RTX.ps1` scan: 0 / 60 engines — clean**
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746`
 
-→ [https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)
+→ Lookup / upload: [VirusTotal file page](https://www.virustotal.com/gui/file/7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746)
 
-SHA-256: `d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783`
+Previous published build scanned **0 / 60 clean** (hash `d51c5599…`). After code comments / edits, **re-upload** the new file and restore the green 0/60 badge.
 
-Anyone can open that link and see the multi-engine AV results. After you change the script, recompute the hash, re-upload, and update this URL.
-
-Bootstrap `get.ps1` hash: `cd52cc795386c8a138dcb348ac68349f36b98c9f23741dc03e4b6ef15573897b`
+Bootstrap `get.ps1` hash: see [`checksums.sha256`](checksums.sha256)
 
 ### 4. Safer install (no `iex` pipe)
 
