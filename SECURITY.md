@@ -28,18 +28,17 @@ Get-FileHash .\Ollama-Turbo-RTX.ps1 -Algorithm SHA256
 
 Published hashes: [`checksums.sha256`](checksums.sha256)
 
-### 3. Scan on VirusTotal (recommended)
+### 3. VirusTotal report (public)
 
-1. Open [VirusTotal Upload](https://www.virustotal.com/gui/home/upload)
-2. Upload `Ollama-Turbo-RTX.ps1` (and optionally `get.ps1`)
-3. Share the report URL in the README when the scan is clean
+**Current `Ollama-Turbo-RTX.ps1` scan (no API key required to view):**
 
-Direct lookup by hash (after first upload):
+→ [https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783](https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783)
 
-- Main script: `https://www.virustotal.com/gui/file/d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783`
-- Bootstrap: `https://www.virustotal.com/gui/file/cd52cc795386c8a138dcb348ac68349f36b98c9f23741dc03e4b6ef15573897b`
+SHA-256: `d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783`
 
-> Re-upload after every release: a new file hash = a new VirusTotal report.
+Anyone can open that link and see the multi-engine AV results. After you change the script, recompute the hash, re-upload, and update this URL.
+
+Bootstrap `get.ps1` hash: `cd52cc795386c8a138dcb348ac68349f36b98c9f23741dc03e4b6ef15573897b`
 
 ### 4. Safer install (no `iex` pipe)
 
