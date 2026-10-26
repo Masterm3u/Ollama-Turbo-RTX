@@ -1,4 +1,8 @@
-# Code signing (Authenticode)
+# Code signing (Authenticode) — optional
+
+**Recommended for this project right now:** stay **unsigned** + [VirusTotal](SECURITY.md) + open PowerShell source + [`checksums.sha256`](checksums.sha256). That is enough for GitHub / Reddit trust.
+
+Commercial Authenticode is an **extra** (enterprise / SmartScreen), not a launch blocker.
 
 Digital signatures prove **who published** the script and that **bytes were not altered** after signing.
 
