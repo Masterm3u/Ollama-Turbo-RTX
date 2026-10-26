@@ -34,6 +34,8 @@ $i18n = @{
         active_hint_c  = "  -> Best for long chats / big documents (saves ~50% context VRAM)"
         active_hint_s  = "  -> Best for fastest replies (max quality KV cache, uses more VRAM)"
         active_hint_k  = "  -> Default Ollama settings, no acceleration flags"
+        gpu_label      = "  GPU             : "
+        gpu_unknown    = "Not detected"
         fa_label       = "  Flash Attention : "
         fa_active      = "ENABLED (1)"
         fa_stock       = "DISABLED (Stock / Conservative)"
@@ -118,6 +120,8 @@ $i18n = @{
         active_hint_c  = "  -> Ideal pour longs chats / gros documents (~50% VRAM contexte economisee)"
         active_hint_s  = "  -> Ideal pour reponses les plus rapides (cache KV qualite max, plus de VRAM)"
         active_hint_k  = "  -> Reglages d'usine Ollama, aucun drapeau d'acceleration"
+        gpu_label      = "  GPU             : "
+        gpu_unknown    = "Non detecte"
         fa_label       = "  Flash Attention : "
         fa_active      = "ACTIVE (1)"
         fa_stock       = "DESACTIVE (Par defaut / Conservateur)"
@@ -202,6 +206,8 @@ $i18n = @{
         active_hint_c  = "  -> Ideal para chats / documentos largos (~50% menos VRAM de contexto)"
         active_hint_s  = "  -> Ideal para respuestas mas rapidas (KV maxima calidad, mas VRAM)"
         active_hint_k  = "  -> Ajustes de fabrica de Ollama, sin flags de aceleracion"
+        gpu_label      = "  GPU             : "
+        gpu_unknown    = "No detectada"
         fa_label       = "  Flash Attention : "
         fa_active      = "ACTIVADO (1)"
         fa_stock       = "DESACTIVADO (Predeterminado)"
@@ -286,6 +292,8 @@ $i18n = @{
         active_hint_c  = "  -> Ideal fuer lange Chats / grosse Dokumente (~50% weniger Kontext-VRAM)"
         active_hint_s  = "  -> Ideal fuer schnellste Antworten (KV max Qualitaet, mehr VRAM)"
         active_hint_k  = "  -> Ollama-Werkseinstellungen, keine Beschleunigungsflags"
+        gpu_label      = "  GPU             : "
+        gpu_unknown    = "Nicht erkannt"
         fa_label       = "  Flash Attention : "
         fa_active      = "AKTIVIERT (1)"
         fa_stock       = "DEAKTIVIERT (Standard)"
@@ -529,6 +537,53 @@ function Get-ActiveTurboMode {
     return "stock"
 }
 
+function Get-NvidiaGpuInfo {
+    if ($script:CachedGpuInfo) { return $script:CachedGpuInfo }
+
+    $name = $null
+    $vramGB = $null
+
+    # nvidia-smi : nom exact + VRAM fiable
+    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+    if ($smi) {
+        try {
+            $raw = & nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
+            $line = ($raw | Select-Object -First 1)
+            if ($line) {
+                $parts = ($line -split ",") | ForEach-Object { $_.Trim() }
+                if ($parts.Count -ge 1 -and $parts[0]) { $name = $parts[0] }
+                if ($parts.Count -ge 2) {
+                    $mb = 0.0
+                    if ([double]::TryParse($parts[1], [ref]$mb) -and $mb -gt 0) {
+                        $vramGB = [math]::Round($mb / 1024.0, 1)
+                    }
+                }
+            }
+        } catch {}
+    }
+
+    if (-not $name) {
+        $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*NVIDIA*" -and $_.Name -notlike "*Audio*" } |
+            Select-Object -First 1
+        if ($gpu) {
+            $name = $gpu.Name
+            if ($gpu.AdapterRAM -and $gpu.AdapterRAM -gt 0 -and -not $vramGB) {
+                $vramGB = [math]::Round($gpu.AdapterRAM / 1GB, 1)
+            }
+        }
+    }
+
+    if ($name -and $vramGB) {
+        $script:CachedGpuInfo = "{0} (~{1} GB)" -f $name, $vramGB
+    } elseif ($name) {
+        $script:CachedGpuInfo = $name
+    } else {
+        $script:CachedGpuInfo = $null
+    }
+    return $script:CachedGpuInfo
+}
+
 function Show-Status {
     Write-Host "`n========================================================" -ForegroundColor DarkGray
     Write-Host $t.status_title -ForegroundColor Cyan
@@ -538,6 +593,7 @@ function Show-Status {
     $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
     $hostBind = [System.Environment]::GetEnvironmentVariable('OLLAMA_HOST', 'Machine')
     $mode = Get-ActiveTurboMode
+    $gpuInfo = Get-NvidiaGpuInfo
 
     Write-Host $t.active_label -NoNewline
     switch ($mode) {
@@ -555,6 +611,9 @@ function Show-Status {
         }
     }
     Write-Host " ------------------------------------------------------" -ForegroundColor DarkGray
+
+    Write-Host $t.gpu_label -NoNewline
+    if ($gpuInfo) { Write-Host $gpuInfo -ForegroundColor Green } else { Write-Host $t.gpu_unknown -ForegroundColor Yellow }
 
     Write-Host $t.fa_label -NoNewline
     if ($fa -eq '1') { Write-Host $t.fa_active -ForegroundColor Green } else { Write-Host $t.fa_stock -ForegroundColor Red }
@@ -1335,11 +1394,11 @@ do {
     Initialize-MenuConsole
     # Here-string literal : backticks de l'ASCII restent intacts
     Write-Host @'
-   ___  _ _                      _____ _
-  / _ \| | | __ _ _ __ ___  __ _|_   _| |_ _ __ _ __   ___
- | | | | | |/ _` | '_ ` _ \/ _` | | | | | | '__| '_ \ / _ \
- | |_| | | | (_| | | | | | | (_| | | | | |_| |  | |_) | (_) |
-  \___/|_|_|\__,_|_| |_| |_|\__,_| \_/  \__,_|  |_.__/ \___/
+   ___  _ _                       _____ _
+  / _ \| | | __ _ _ __ ___  __ _ |_   _| |_ _ __ _ __   ___
+ | | | | | |/ _` | '_ ` _ \/ _` |  | | | | | '__| '_ \ / _ \
+ | |_| | | | (_| | | | | | | (_| |  | | | |_| |  | |_) | (_) |
+  \___/|_|_|\__,_|_| |_| |_|\__,_|  \_/  \__,_|  |_.__/ \___/
       Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
     Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
