@@ -1,0 +1,4 @@
+# SHA-256 checksums for release files (recompute after every change)
+# Verify: Get-FileHash .\Ollama-Turbo-RTX.ps1 -Algorithm SHA256
+d51c5599308df8154d9d581f5bb419b16899043856ce4a620f61334f40c53783  Ollama-Turbo-RTX.ps1
+cd52cc795386c8a138dcb348ac68349f36b98c9f23741dc03e4b6ef15573897b  get.ps1

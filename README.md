@@ -40,6 +40,28 @@ irm https://masterm3u.github.io/turbo | iex
 
 Zero clone. Zero installer. Menu in color → optimize → optional live bench.
 
+**Prefer to inspect first?** Download, open in Notepad / scan on VirusTotal, then run — see [Security & trust](#-security--trust).
+
+---
+
+### 🔒 Security & trust
+
+This project is **open-source PowerShell only** — no `.exe`, no packed binary, no obfuscation, no telemetry. You can read every line before it runs.
+
+| Check | How |
+|-------|-----|
+| **Source** | [`Ollama-Turbo-RTX.ps1`](Ollama-Turbo-RTX.ps1) — plain text |
+| **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
+| **VirusTotal** | Upload the `.ps1` at [virustotal.com/gui/home/upload](https://www.virustotal.com/gui/home/upload) (multi-engine AV scan) |
+| **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
+
+```powershell
+# Verify integrity after download
+Get-FileHash "$env:TEMP\Ollama-Turbo-RTX.ps1" -Algorithm SHA256
+```
+
+> Honesty note: nobody can prove “100% forever virus-free” for every future commit. Trust comes from **readable source + checksums + a clean VirusTotal report on the file you actually run**. After each update, re-check the hash and re-scan.
+
 ---
 
 ### 📊 Real benchmark (author hardware — not marketing)

@@ -73,7 +73,7 @@ Methodology (built into the script): for each mode → 1 warm-up (discarded) + *
 ### Repo
 https://github.com/Masterm3u/Ollama-Turbo-RTX
 
-PolyForm Noncommercial (personal/non-commercial free). No telemetry.
+PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe) — read it, checksum it, or scan on VirusTotal before running: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
 
 If you try it, please reply with GPU + model + your Stock/Speed/Context table — curious how this scales on 3090/4090/5090 etc.
 
