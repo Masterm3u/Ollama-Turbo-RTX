@@ -944,93 +944,82 @@ function New-HeavyStressPrompt {
 # Alias de compatibilite
 function New-BenchmarkStressPrompt { return (New-HeavyStressPrompt) }
 
-# Win32 : seul moyen fiable de mettre la fenetre en pleine hauteur (Windows Terminal ignore SetWindowSize)
+# Sous Windows Terminal, GetConsoleWindow() renvoie une pseudo-fenetre invisible et
+# SetBufferSize casse le defilement : on redimensionne la vraie fenetre via Win32.
 if (-not ("OllamaTurboWin" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public static class OllamaTurboWin {
+    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO {
+        public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags;
+    }
     [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
-    public const int SW_MAXIMIZE = 3;
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
+    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
+    [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMon, ref MONITORINFO mi);
+    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
 }
 "@
 }
 
-function Maximize-ConsoleWindow {
-    try {
-        $hwnd = [OllamaTurboWin]::GetConsoleWindow()
-        if ($hwnd -eq [IntPtr]::Zero) {
-            $hwnd = (Get-Process -Id $PID -ErrorAction SilentlyContinue).MainWindowHandle
-        }
-        if ($hwnd -ne [IntPtr]::Zero) {
-            [void][OllamaTurboWin]::ShowWindow($hwnd, [OllamaTurboWin]::SW_MAXIMIZE)
-            Start-Sleep -Milliseconds 200
-        }
-    } catch {}
+function Get-TerminalWindowHandle {
+    if (-not $env:WT_SESSION) {
+        return [OllamaTurboWin]::GetConsoleWindow()
+    }
+    # Windows Terminal : la fenetre visible est celle au premier plan au lancement
+    $hwnd = [OllamaTurboWin]::GetForegroundWindow()
+    if ($hwnd -eq [IntPtr]::Zero) { return [IntPtr]::Zero }
+    $procId = [uint32]0
+    [void][OllamaTurboWin]::GetWindowThreadProcessId($hwnd, [ref]$procId)
+    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
+    if ($proc -and $proc.ProcessName -like "WindowsTerminal*") { return $hwnd }
+    return [IntPtr]::Zero
 }
 
-function Set-ConsoleSizeSafe {
-    param(
-        [int]$Width = 120,
-        [int]$Height = 50
-    )
+function Resize-TerminalFullHeight {
+    if ($script:TerminalResized) { return }
+    $script:TerminalResized = $true
     try {
-        $maxW = [Console]::LargestWindowWidth
-        $maxH = [Console]::LargestWindowHeight
-        if ($maxW -lt 40) { $maxW = 120 }
-        if ($maxH -lt 20) { $maxH = 50 }
-        $w = [math]::Min($Width, $maxW)
-        $h = [math]::Min($Height, $maxH)
-        $growW = [math]::Max([Console]::BufferWidth, $w)
-        $growH = [math]::Max([Console]::BufferHeight, [math]::Max($h, 80))
-        [Console]::SetBufferSize($growW, $growH)
-        [Console]::SetWindowSize($w, $h)
-        [Console]::SetWindowPosition(0, 0)
-    } catch {
-        try {
-            $raw = $Host.UI.RawUI
-            $mw = [math]::Min($Width, $raw.MaxWindowSize.Width)
-            $mh = [math]::Min($Height, $raw.MaxWindowSize.Height)
-            $raw.BufferSize = New-Object System.Management.Automation.Host.Size ([math]::Max($mw, 120), [math]::Max($mh, 80))
-            $raw.WindowSize = New-Object System.Management.Automation.Host.Size ($mw, $mh)
-            $raw.WindowPosition = New-Object System.Management.Automation.Host.Coordinates 0, 0
-        } catch {}
-    }
+        try { [void][OllamaTurboWin]::SetThreadDpiAwarenessContext([IntPtr](-4)) } catch {}
+        $hwnd = Get-TerminalWindowHandle
+        if ($hwnd -eq [IntPtr]::Zero -or [OllamaTurboWin]::IsZoomed($hwnd)) { return }
+
+        $rect = New-Object OllamaTurboWin+RECT
+        [void][OllamaTurboWin]::GetWindowRect($hwnd, [ref]$rect)
+        $mi = New-Object OllamaTurboWin+MONITORINFO
+        $mi.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($mi)
+        $mon = [OllamaTurboWin]::MonitorFromWindow($hwnd, 2)
+        if (-not [OllamaTurboWin]::GetMonitorInfo($mon, [ref]$mi)) { return }
+
+        $work = $mi.rcWork
+        $width = [math]::Min($rect.Right - $rect.Left, $work.Right - $work.Left)
+        $left = [math]::Max($work.Left, [math]::Min($rect.Left, $work.Right - $width))
+        $rowsBefore = [Console]::WindowHeight
+        [void][OllamaTurboWin]::MoveWindow($hwnd, $left, $work.Top, $width, $work.Bottom - $work.Top, $true)
+
+        # Laisser le terminal recalculer ses lignes avant de dessiner
+        for ($i = 0; $i -lt 20 -and [Console]::WindowHeight -eq $rowsBefore; $i++) {
+            Start-Sleep -Milliseconds 50
+        }
+    } catch {}
 }
 
 function Initialize-MenuConsole {
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo RTX" } catch {}
-    Maximize-ConsoleWindow
-    # Apres maximize : remplir toute la hauteur disponible (pas de petite fenetre)
-    try {
-        $h = [math]::Max(50, [Console]::LargestWindowHeight)
-        $w = [math]::Max(100, [math]::Min(120, [Console]::LargestWindowWidth))
-        Set-ConsoleSizeSafe -Width $w -Height $h
-    } catch {
-        Set-ConsoleSizeSafe -Width 120 -Height 50
-    }
+    Resize-TerminalFullHeight
     Clear-Host
-    try {
-        [Console]::SetCursorPosition(0, 0)
-        [Console]::SetWindowPosition(0, 0)
-    } catch {}
 }
 
 function Initialize-BenchConsole {
     try { $host.UI.RawUI.WindowTitle = "Ollama Turbo Benchmark [ADMIN]" } catch {}
-    Maximize-ConsoleWindow
-    try {
-        $h = [math]::Max(45, [Console]::LargestWindowHeight)
-        Set-ConsoleSizeSafe -Width 120 -Height $h
-        [Console]::SetBufferSize(120, [math]::Max(3000, [Console]::BufferHeight))
-    } catch {}
+    Resize-TerminalFullHeight
     Clear-Host
-    try {
-        [Console]::SetCursorPosition(0, 0)
-        [Console]::SetWindowPosition(0, 0)
-    } catch {}
 }
 
 function Run-Benchmark {
