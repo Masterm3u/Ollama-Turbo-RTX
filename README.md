@@ -1,4 +1,4 @@
-# ⚡ Ollama-Turbo-RTX
+# Ollama-Turbo-RTX — Enable Flash Attention & Q8 KV Cache on Windows (NVIDIA RTX)
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
@@ -7,15 +7,28 @@
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/groupeplatinium)
 
-> **1-Click Hardware Acceleration for Ollama on Windows (NVIDIA RTX 30 / 40 / 50 Series)**
+> **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
 
 <!-- Drop assets/demo.gif then uncomment:
 ![Demo](assets/demo.gif)
 -->
 
-Ollama on Windows runs in **conservative mode** by default (FP16 KV cache, Flash Attention off — safer for legacy GPUs). On modern RTX cards that leaves performance on the table, especially **prompt ingest** in Cursor / VS Code.
+### The problem (why Ollama feels slow on Windows)
 
-**Ollama-Turbo** enables Tensor Core–friendly flags in one line, unlocks **Q8 KV** (~50% less context VRAM), restarts Ollama cleanly, and ships a **live Stock vs Turbo benchmark**.
+By default, **Ollama on Windows** runs in **conservative mode**: **Flash Attention is disabled** and the **KV cache stays FP16**. That protects older GPUs, but on a modern **NVIDIA GeForce RTX** (30-series, 40-series, 50-series) you leave free performance on the table — slower **prompt processing / time-to-first-token**, higher **VRAM** use on long context, and a weaker experience when loading large files in **Cursor**, **VS Code**, or any local LLM chat.
+
+People search for: *enable Ollama Flash Attention Windows*, *OLLAMA_FLASH_ATTENTION*, *Ollama Q8 KV cache*, *reduce Ollama VRAM*, *Ollama RTX 4090 / 5080 optimize* — this repo is the 1-click answer.
+
+### The fix (Ollama-Turbo)
+
+**Ollama-Turbo-RTX** is a free **PowerShell** tool that:
+
+- sets **`OLLAMA_FLASH_ATTENTION=1`** (Tensor Core–friendly Flash Attention)
+- optionally sets **`OLLAMA_KV_CACHE_TYPE=q8_0`** (quantized KV cache → **~50% less context VRAM**)
+- restarts the **Ollama** daemon cleanly
+- runs a **live Stock vs Turbo benchmark** (tokens/s) so you can verify the gain on *your* GPU
+
+One Admin PowerShell line. No installer. Rollback included.
 
 ---
 
