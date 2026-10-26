@@ -8,6 +8,15 @@ Ollama on Windows runs in conservative mode by default (FP16 KV cache and disabl
 
 ---
 
+### ✨ Features
+
+- **Auto-detects** the Windows OS language on launch
+- **Full multilingual UI** (4 languages): English (worldwide default), French, Spanish, and German
+- **Switch language anytime** from the menu, or via CLI (`-Lang en`, `-Lang fr`, `-Lang es`, `-Lang de`)
+- **All tools in one place**: optimization (Flash Attention + KV Q8), rollback, detailed status, and live benchmark
+
+---
+
 ### 🚀 Quick Install (1 line in PowerShell)
 
 ```powershell
@@ -42,6 +51,12 @@ Or clone / download the repo and double-click `Ollama-Turbo-RTX.bat`.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1
+```
+
+Force a language:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Lang fr
 ```
 
 ---
