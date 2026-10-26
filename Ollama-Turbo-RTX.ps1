@@ -1311,6 +1311,7 @@ function Run-Benchmark {
     Write-Host " Date     : $timestamp" -ForegroundColor DarkGray
     Write-Host " Modele   : $testModel" -ForegroundColor DarkGray
     Write-Host " Contexte : $benchCtx tokens" -ForegroundColor DarkGray
+    Write-Host " Methode  : 1 warm-up + 3 passes par mode ; t/s = moyenne des 3" -ForegroundColor DarkGray
     Write-Host " GPU      : $($hw.Gpu)" -ForegroundColor Green
     Write-Host " CPU      : $($hw.Cpu)" -ForegroundColor Green
     Write-Host " RAM      : $($hw.Ram)" -ForegroundColor Green
@@ -1318,6 +1319,7 @@ function Run-Benchmark {
     Write-Host $sepLine -ForegroundColor DarkGray
     Write-Host (" {0,-26} | {1,18} | {2,14} | {3,13} " -f "CONFIGURATION", "GENERATION (t/s)", "GAIN VITESSE", "GAIN VRAM") -ForegroundColor Yellow
     Write-Host $subLine -ForegroundColor DarkGray
+    Write-Host "  (valeurs = moyenne de 3 essais apres warm-up)" -ForegroundColor DarkGray
 
     Write-Host (" {0,-26} | {1,14} t/s | {2,14} | {3,13} " -f "[Stock] Par defaut", [string]$resStock.Eval, "(Reference)", "Aucun (100%)") -ForegroundColor Gray
 
@@ -1352,6 +1354,7 @@ function Run-Benchmark {
  Date     : $timestamp
  Modele   : $testModel
  Contexte : $benchCtx tokens
+ Methode  : 1 warm-up + 3 passes par mode ; t/s = moyenne des 3 essais
  GPU      : $($hw.Gpu)
  CPU      : $($hw.Cpu)
  RAM      : $($hw.Ram)
@@ -1362,6 +1365,9 @@ function Run-Benchmark {
  [Stock] Par defaut                 $($resStock.Eval) t/s       (Reference)      Aucun (100%)
  [2] Turbo Vitesse (FA)             $($resSpeed.Eval) t/s        $gainSpeedStr          Aucun (100%)
  [1] Turbo Contexte (FA + Q8)       $($resContext.Eval) t/s        $gainCtxStr          -50 % VRAM
+================================================================================
+ Note : chaque t/s ci-dessus est la MOYENNE de 3 generations (apres 1 warm-up).
+        Prompt unique a chaque passe (anti-cache) + keep_alive=0.
 ================================================================================
  RECOMMANDATION :
  -> Meilleure configuration detectee : $bestMode

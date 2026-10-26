@@ -59,6 +59,8 @@ I built **Ollama-Turbo**: a 1-click, multi-language PowerShell script that detec
 
 On this machine the winner is **FA + Q8**: ~**+29%** generation throughput and **half** the context VRAM.
 
+Methodology (built into the script): for each mode → 1 warm-up (discarded) + **3 timed runs**, reported value = **average t/s**. Fresh unique prompt each pass + `keep_alive=0` so prompt cache can’t fake the score.
+
 ### What it does
 - Turbo Context (FA + Q8) / Turbo Pure Speed (FA) / Rollback
 - Live benchmark: Stock | Speed | Context

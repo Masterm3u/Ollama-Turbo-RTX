@@ -3,6 +3,7 @@
  Date     : 2026-10-26 16:19:01
  Modele   : qwen-64k:latest
  Contexte : 16384 tokens
+ Methode  : 1 warm-up + 3 passes par mode ; t/s = moyenne des 3 essais
  GPU      : NVIDIA GeForce RTX 5080 (~15,9 GB)
  CPU      : Intel(R) Core(TM) Ultra 9 285K
  RAM      : 31 GB
@@ -13,6 +14,9 @@
  [Stock] Par defaut                 107.6 t/s       (Reference)      Aucun (100%)
  [2] Turbo Vitesse (FA)             107.81 t/s        +0.2 %          Aucun (100%)
  [1] Turbo Contexte (FA + Q8)       139.28 t/s        +29.4 %          -50 % VRAM
+================================================================================
+ Note : chaque t/s ci-dessus est la MOYENNE de 3 generations (apres 1 warm-up).
+        Prompt unique a chaque passe (anti-cache) + keep_alive=0.
 ================================================================================
  RECOMMANDATION :
  -> Meilleure configuration detectee : Turbo Contexte (FA + Q8)

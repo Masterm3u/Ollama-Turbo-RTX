@@ -50,6 +50,16 @@ Measured with the built-in live bench (**menu [4]**), same model & context for a
 
 **Winner on this machine:** Turbo Context (FA + Q8) → **+29.4% tokens/s** and **half the KV VRAM**.
 
+#### How the benchmark works
+
+For **each** mode (Stock → Turbo Speed → Turbo Context):
+
+1. Apply the env flags and restart Ollama cleanly  
+2. **1 warm-up** pass (load weights / CUDA) — not counted  
+3. **3 timed passes** (`num_predict=128`, same context size)  
+4. Report **the average** of those 3 generation rates (t/s)  
+5. Every pass uses a **fresh unique heavy prompt** + `keep_alive=0` (no prompt-cache inflation)
+
 Raw report: [`benchmarks/RTX5080_qwen-64k_2026-10-26.txt`](benchmarks/RTX5080_qwen-64k_2026-10-26.txt)
 
 > Results vary by GPU / model / drivers. Run **[4]** yourself and compare — that’s the point.
