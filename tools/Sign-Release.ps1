@@ -63,15 +63,7 @@ function Get-SigningCertificate {
         return $existing
     }
 
-    throw @"
-Aucun certificat Code Signing trouve.
-
-Options :
-  1) Installer un certificat commercial, puis :
-       .\tools\Sign-Release.ps1 -Thumbprint VOTRE_THUMBPRINT
-  2) Labo local seulement :
-       .\tools\Sign-Release.ps1 -CreateSelfSigned
-"@
+    throw "Aucun certificat Code Signing trouve.`nOptions :`n  1) .\tools\Sign-Release.ps1 -Thumbprint VOTRE_THUMBPRINT`n  2) .\tools\Sign-Release.ps1 -CreateSelfSigned"
 }
 
 $cert = Get-SigningCertificate
@@ -88,7 +80,7 @@ foreach ($rel in $Files) {
     if ($sig.Status -ne "Valid" -and $sig.Status -ne "UnknownError") {
         # UnknownError parfois = horodatage indisponible ; on reessaie sans timestamp
         if ($sig.StatusMessage -match "timestamp|horodat") {
-            Write-Host "  [!] Timestamp serveur indisponible — signature sans horodatage..." -ForegroundColor Yellow
+            Write-Host "  [!] Timestamp serveur indisponible - signature sans horodatage..." -ForegroundColor Yellow
             $sig = Set-AuthenticodeSignature -FilePath $path -Certificate $cert -HashAlgorithm SHA256
         }
     }
