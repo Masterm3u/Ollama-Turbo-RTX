@@ -118,9 +118,10 @@ $i18n = @{
         opt_a          = "  [A] VRAM context estimate (FP16 vs Q8)"
         opt_m          = "  [M] Multi-model benchmark (7B / 14B / 32B)"
         opt_w          = "  [W] Watchdog after reboot (install / check / remove)"
+        opt_s          = "  [S] Star GitHub + Buy me a coffee (opens browser)"
         opt_q          = "  [Q] Exit"
-        prompt_choice  = "Enter your choice (1-9, A, M, W or Q)"
-        support_tip    = "  Star the repo + Buy me a coffee: buymeacoffee.com/masterm3u"
+        prompt_choice  = "Enter your choice (1-9, A, M, W, S or Q)"
+        support_tip    = "  Tip: press [S] to open GitHub star + buymeacoffee.com/masterm3u"
         health_title   = " SYSTEM HEALTH CHECK"
         smart_title    = " SMART GPU PRESET"
         workflow_title = " WORKFLOW PRESET"
@@ -221,9 +222,10 @@ $i18n = @{
         opt_a          = "  [A] Estimation VRAM contexte (FP16 vs Q8)"
         opt_m          = "  [M] Benchmark multi-modeles (7B / 14B / 32B)"
         opt_w          = "  [W] Watchdog apres reboot (installer / verifier / retirer)"
+        opt_s          = "  [S] Etoile GitHub + cafe (ouvre le navigateur)"
         opt_q          = "  [Q] Quitter"
-        prompt_choice  = "Entrez votre choix (1-9, A, M, W ou Q)"
-        support_tip    = "  Etoile GitHub + cafe : buymeacoffee.com/masterm3u"
+        prompt_choice  = "Entrez votre choix (1-9, A, M, W, S ou Q)"
+        support_tip    = "  Astuce: tapez [S] pour ouvrir GitHub + buymeacoffee.com/masterm3u"
         health_title   = " DIAGNOSTIC SYSTEME"
         smart_title    = " PRESET GPU INTELLIGENT"
         workflow_title = " PRESET WORKFLOW"
@@ -1527,10 +1529,37 @@ function Show-Menu {
     if ($t.opt_a) { Write-Host $t.opt_a }
     if ($t.opt_m) { Write-Host $t.opt_m }
     if ($t.opt_w) { Write-Host $t.opt_w }
+    if ($t.opt_s) { Write-Host $t.opt_s -ForegroundColor DarkYellow }
     Write-Host $t.opt_q
     Write-Host ""
-    Write-Host $t.support_tip -ForegroundColor DarkYellow
-    Write-Host ""
+}
+
+function Invoke-SupportLinks {
+    Write-Host "`n SUPPORT MASTERM3U" -ForegroundColor Cyan
+    Write-Host "  [1] Etoile GitHub (repo Ollama-Turbo-RTX)" -ForegroundColor White
+    Write-Host "  [2] Buy me a coffee" -ForegroundColor White
+    Write-Host "  [3] Les deux (GitHub + cafe)" -ForegroundColor Green
+    Write-Host "  [0] Retour" -ForegroundColor DarkGray
+    try {
+        $c = [string](Read-Host "  Choix").Trim()
+    } catch { $c = "0" }
+
+    $github = "https://github.com/Masterm3u/Ollama-Turbo-RTX"
+    $coffee = "https://buymeacoffee.com/masterm3u"
+    $urls = @()
+    switch ($c) {
+        "1" { $urls = @($github) }
+        "2" { $urls = @($coffee) }
+        "3" { $urls = @($github, $coffee) }
+        default { return }
+    }
+    foreach ($u in $urls) {
+        Write-Host "  [*] Ouverture: $u" -ForegroundColor Cyan
+        try { Start-Process $u } catch {
+            Write-Host "  [!!] Impossible d'ouvrir le navigateur. Copie: $u" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "  [OK] Merci pour le soutien !" -ForegroundColor Green
 }
 
 # MENU [1]/[2] — applique les flags Turbo sur la machine puis redemarre Ollama
@@ -2893,6 +2922,7 @@ do {
         '^[Aa]$' { Show-VramContextEstimate; Pause }
         '^[Mm]$' { Start-BenchmarkWindow -MultiModel; Pause }
         '^[Ww]$' { Invoke-WatchdogMenu; Pause }
+        '^[Ss]$' { Invoke-SupportLinks; Pause }
         '^[Qq]$' { Exit }
         default { Write-Warning "Invalid option." }
     }
