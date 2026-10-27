@@ -947,6 +947,92 @@ function Update-OllamaFromRelease {
     return $false
 }
 
+# Interroge l'API NVIDIA (AjaxDriverService) — AUCUN telechargement, liens seuls
+function Get-NvidiaGpuProductIds {
+    param([string]$GpuName)
+    if ([string]::IsNullOrWhiteSpace($GpuName)) { return $null }
+    try {
+        $headers = @{ "User-Agent" = "Ollama-Turbo-RTX" }
+        [xml]$prods = (Invoke-WebRequest -Uri "https://www.nvidia.com/Download/API/lookupValueSearch.aspx?TypeID=3" -Headers $headers -UseBasicParsing -TimeoutSec 12).Content
+        $list = @($prods.LookupValueSearch.LookupValues.LookupValue)
+        # Match exact / partiel (ex. "NVIDIA GeForce RTX 5080" vs "GeForce RTX 5080")
+        $norm = ($GpuName -replace '^NVIDIA\s+', '').Trim()
+        $hit = $list | Where-Object { $_.Name -eq "NVIDIA $norm" -or $_.Name -eq $norm -or $_.Name -eq $GpuName } | Select-Object -First 1
+        if (-not $hit) {
+            $hit = $list | Where-Object { $_.Name -like "*$norm*" -and $_.Name -notlike "*Laptop*" } | Select-Object -First 1
+        }
+        if (-not $hit -and $norm -match 'Laptop|Notebook') {
+            $hit = $list | Where-Object { $_.Name -like "*$norm*" } | Select-Object -First 1
+        }
+        if (-not $hit) { return $null }
+        return [pscustomobject]@{
+            Name    = [string]$hit.Name
+            Pfid    = [int]$hit.Value
+            Psid    = [int]$hit.ParentID
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Get-LatestNvidiaDriver {
+    param(
+        [string]$GpuName,
+        [string]$InstalledVersion
+    )
+    $ids = Get-NvidiaGpuProductIds -GpuName $GpuName
+    if (-not $ids) {
+        return [pscustomobject]@{
+            Ok = $false
+            Error = "GPU product not found in NVIDIA catalog"
+            SearchUrl = "https://www.nvidia.com/Download/index.aspx"
+        }
+    }
+
+    $osId = 57  # Windows 10 64-bit (drivers couvrent aussi Win11)
+    try {
+        $cap = (Get-CimInstance Win32_OperatingSystem -ErrorAction Stop).Caption
+        if ($cap -match 'Windows 11') { $osId = 135 }
+    } catch {}
+
+    $url = "https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?func=DriverManualLookup&psid=$($ids.Psid)&pfid=$($ids.Pfid)&osID=$osId&languageCode=1033&beta=0&isWHQL=1&dltype=-1&dch=1&upCRD=0&qnf=0&sort1=1&numberOfResults=1"
+    try {
+        $headers = @{ "User-Agent" = "Ollama-Turbo-RTX"; "Accept" = "application/json" }
+        $r = Invoke-RestMethod -Uri $url -Headers $headers -TimeoutSec 15
+        if (-not $r -or "$($r.Success)" -ne "1" -or -not $r.IDS) {
+            return [pscustomobject]@{ Ok = $false; Error = "NVIDIA API empty"; SearchUrl = "https://www.nvidia.com/Download/index.aspx" }
+        }
+        $info = $r.IDS[0].downloadInfo
+        if (-not $info) { $info = $r.IDS[0] }
+        $latest = [string]$info.Version
+        $instVer = $null
+        $latVer = $null
+        try { if ($InstalledVersion -match '(\d+\.\d+)') { $instVer = [version]$Matches[1] } } catch {}
+        try { if ($latest -match '(\d+\.\d+)') { $latVer = [version]$Matches[1] } } catch {}
+        $update = $false
+        if ($instVer -and $latVer -and $latVer -gt $instVer) { $update = $true }
+
+        return [pscustomobject]@{
+            Ok              = $true
+            ProductName     = $ids.Name
+            Installed       = $InstalledVersion
+            Latest          = $latest
+            UpdateAvailable = $update
+            Released        = [uri]::UnescapeDataString([string]$info.ReleaseDateTime)
+            Size            = [uri]::UnescapeDataString([string]$info.DownloadURLFileSize)
+            DetailsUrl      = [string]$info.DetailsURL
+            DownloadUrl     = [string]$info.DownloadURL
+            SearchUrl       = "https://www.nvidia.com/Download/index.aspx"
+        }
+    } catch {
+        return [pscustomobject]@{
+            Ok = $false
+            Error = $_.Exception.Message
+            SearchUrl = "https://www.nvidia.com/Download/index.aspx"
+        }
+    }
+}
+
 # MENU [6] — diagnostic + offre de mise a jour Ollama EN FIN de rapport (prompt visible)
 function Invoke-HealthCheck {
     Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
@@ -998,6 +1084,40 @@ function Invoke-HealthCheck {
         try {
             $line = (& nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
             Write-Host "  [OK] NVIDIA driver / GPU : $line" -ForegroundColor Green
+            $gpuName = ""
+            $drvVer = ""
+            if ($line -match '^\s*(.+?),\s*([\d\.]+)\s*,') {
+                $gpuName = $Matches[1].Trim()
+                $drvVer = $Matches[2].Trim()
+            } else {
+                try {
+                    $gpuName = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
+                    $drvVer = (& nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
+                } catch {}
+            }
+            if ($gpuName -and $drvVer) {
+                Write-Host "  [*] Checking latest NVIDIA Game Ready driver online..." -ForegroundColor DarkGray
+                $nv = Get-LatestNvidiaDriver -GpuName $gpuName -InstalledVersion $drvVer
+                if ($nv.Ok) {
+                    if ($nv.UpdateAvailable) {
+                        Write-Host "  [!!] NVIDIA DRIVER UPDATE AVAILABLE" -ForegroundColor Yellow
+                        Write-Host ("       installed : {0}" -f $nv.Installed) -ForegroundColor Yellow
+                        Write-Host ("       latest    : {0}  ({1}, {2})" -f $nv.Latest, $nv.Released, $nv.Size) -ForegroundColor Yellow
+                        Write-Host "       (pas de DL PowerShell — ouvre le lien dans ton navigateur)" -ForegroundColor DarkGray
+                        if ($nv.DownloadUrl) {
+                            Write-Host ("       download  : {0}" -f $nv.DownloadUrl) -ForegroundColor Cyan
+                        }
+                        if ($nv.DetailsUrl) {
+                            Write-Host ("       details   : {0}" -f $nv.DetailsUrl) -ForegroundColor DarkGray
+                        }
+                    } else {
+                        Write-Host ("  [OK] NVIDIA driver UP TO DATE  (installed {0} = latest {1})" -f $nv.Installed, $nv.Latest) -ForegroundColor Green
+                    }
+                } else {
+                    Write-Host ("  [--] NVIDIA driver check skipped: {0}" -f $(if ($nv.Error) { $nv.Error } else { "API unreachable" })) -ForegroundColor DarkGray
+                    Write-Host ("       search    : {0}" -f $nv.SearchUrl) -ForegroundColor DarkGray
+                }
+            }
         } catch {
             Write-Host "  [!!] nvidia-smi failed" -ForegroundColor Yellow
         }
