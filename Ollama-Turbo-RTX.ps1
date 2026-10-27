@@ -1621,6 +1621,30 @@ function Start-BenchmarkWindow {
         return
     }
 
+    # Avertissement AVANT UAC (RTX 5080 / multi = souvent > 15 min)
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    Write-Host "   BENCHMARK — AVERTISSEMENT DUREE" -ForegroundColor Yellow
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    if ($MultiModel) {
+        Write-Host "   Mode : MULTI-MODELES (7B / 14B / 32B)" -ForegroundColor White
+        Write-Host "   Duree typique RTX 5080 : environ 15 a 30+ minutes" -ForegroundColor Red
+    } else {
+        Write-Host "   Mode : 1 modele × 3 configs (Stock / FA / FA+Q8)" -ForegroundColor White
+        Write-Host "   Duree typique RTX 5080 : environ 8 a 15 minutes" -ForegroundColor Yellow
+    }
+    Write-Host "   Un chrono s'affiche dans le titre de la fenetre Admin." -ForegroundColor DarkGray
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    Write-Host "  [Y] Continuer (ouvre la fenetre Admin)" -ForegroundColor Green
+    Write-Host "  [N] Annuler" -ForegroundColor DarkGray
+    try {
+        $pre = [string](Read-Host "  Continuer? (Y/N) [N]").Trim()
+    } catch { $pre = "N" }
+    if ($pre -notmatch '^(o|oui|y|yes)$') {
+        Write-Host "  [--] Benchmark annule." -ForegroundColor Yellow
+        return
+    }
+
     $argList = @(
         "-NoProfile"
         "-ExecutionPolicy", "Bypass"
@@ -1976,6 +2000,134 @@ function Initialize-BenchConsole {
     Clear-Host
 }
 
+# Estimation duree bench (RTX 40/50 : redemarrages Ollama + warm-up + passes = long)
+function Get-BenchmarkDurationEstimate {
+    param(
+        [int]$ModelCount = 1,
+        [int]$PassCount = 3,
+        [array]$ModelQueue = @()
+    )
+    # Base: 3 modes × (restart ~25s + warm + passes). RTX 5080 / gros modeles = plus long.
+    $minPerModel = 5
+    $maxPerModel = 10
+    foreach ($m in @($ModelQueue)) {
+        $n = [string]$m.Name
+        if ($n -match '(?i)32b|34b|70b|72b') { $minPerModel = 8; $maxPerModel = 18 }
+        elseif ($n -match '(?i)14b|13b|22b') { $minPerModel = [math]::Max($minPerModel, 6); $maxPerModel = [math]::Max($maxPerModel, 14) }
+    }
+    if ($PassCount -ge 3) { $maxPerModel += 3 }
+    $minM = [math]::Max(4, $ModelCount * $minPerModel)
+    $maxM = [math]::Max($minM + 3, $ModelCount * $maxPerModel)
+    # Plafond indicatif multi 3 modeles souvent > 15-25 min sur RTX 5080
+    if ($ModelCount -ge 3) {
+        $minM = [math]::Max($minM, 15)
+        $maxM = [math]::Max($maxM, 30)
+    }
+    return @{ MinMin = $minM; MaxMin = $maxM }
+}
+
+function Format-BenchElapsed {
+    param($Elapsed)
+    if (-not $Elapsed) { return "00:00:00" }
+    return ("{0:00}:{1:00}:{2:00}" -f [int]$Elapsed.TotalHours, $Elapsed.Minutes, $Elapsed.Seconds)
+}
+
+function Update-BenchChrono {
+    param([string]$Phase = "")
+    if (-not $script:BenchStopwatch) { return }
+    $e = $script:BenchStopwatch.Elapsed
+    $stamp = Format-BenchElapsed -Elapsed $e
+    $title = "Ollama Bench | Chrono $stamp"
+    if ($script:BenchEtaLabel) { $title += " | ETA ~$($script:BenchEtaLabel)" }
+    if ($Phase) { $title += " | $Phase" }
+    try { $host.UI.RawUI.WindowTitle = $title } catch {}
+    Write-Host ("  >> Chrono ecoule : {0}{1}" -f $stamp, $(if ($Phase) { "  [$Phase]" } else { "" })) -ForegroundColor DarkCyan
+}
+
+function Start-BenchmarkElapsedTimer {
+    param([string]$EtaLabel = "")
+    $script:BenchStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $script:BenchEtaLabel = $EtaLabel
+    $script:BenchStartedAt = Get-Date
+    Write-Host ""
+    Write-Host "  ********************************************************" -ForegroundColor Cyan
+    Write-Host ("  *  CHRONO DEMARRE  {0}" -f $script:BenchStartedAt.ToString("HH:mm:ss")) -ForegroundColor Cyan
+    Write-Host ("  *  Duree estimee   ~{0}" -f $EtaLabel) -ForegroundColor Yellow
+    Write-Host "  *  (le titre de la fenetre se met a jour a chaque etape)" -ForegroundColor DarkGray
+    Write-Host "  ********************************************************" -ForegroundColor Cyan
+    Write-Host ""
+    Update-BenchChrono -Phase "START"
+}
+
+function Stop-BenchmarkElapsedTimer {
+    $elapsed = $null
+    if ($script:BenchStopwatch) {
+        $script:BenchStopwatch.Stop()
+        $elapsed = $script:BenchStopwatch.Elapsed
+        $script:BenchStopwatch = $null
+    }
+    $stamp = Format-BenchElapsed -Elapsed $elapsed
+    Write-Host ""
+    Write-Host "  ********************************************************" -ForegroundColor Green
+    Write-Host ("  *  BENCH TERMINE — duree totale : {0}" -f $stamp) -ForegroundColor Green
+    if ($script:BenchStartedAt) {
+        Write-Host ("  *  Debut {0}  →  Fin {1}" -f $script:BenchStartedAt.ToString("HH:mm:ss"), (Get-Date).ToString("HH:mm:ss")) -ForegroundColor DarkGray
+    }
+    Write-Host "  ********************************************************" -ForegroundColor Green
+    Write-Host ""
+    try { $host.UI.RawUI.WindowTitle = "Ollama Bench TERMINE | $stamp" } catch {}
+    $script:BenchEtaLabel = $null
+    $script:BenchStartedAt = $null
+    return $elapsed
+}
+
+function Confirm-BenchmarkStart {
+    param(
+        [array]$ModelQueue,
+        [int]$PassCount,
+        [switch]$SkipPrompt  # CLI automation avec -Out : avertit quand meme, continue apres 8s
+    )
+    $est = Get-BenchmarkDurationEstimate -ModelCount $ModelQueue.Count -PassCount $PassCount -ModelQueue $ModelQueue
+    $etaLabel = "{0}-{1} min" -f $est.MinMin, $est.MaxMin
+    $names = ($ModelQueue | ForEach-Object { $_.Name }) -join " | "
+
+    Write-Host ""
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    Write-Host "   ATTENTION — BENCHMARK LONG (surtout RTX 5080 / multi-modeles)" -ForegroundColor Yellow
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    Write-Host ("   Modeles     : {0}" -f $names) -ForegroundColor White
+    Write-Host ("   Modes       : Stock + Turbo FA + Turbo FA+Q8") -ForegroundColor White
+    Write-Host ("   Passes      : {0} chronometrees + 1 warm-up par mode" -f $PassCount) -ForegroundColor White
+    Write-Host ("   Duree estimee : environ {0} (souvent > 15 min en multi)" -f $etaLabel) -ForegroundColor Red
+    Write-Host "   Ne ferme pas la fenetre. Un chrono s'affiche dans le titre." -ForegroundColor DarkGray
+    Write-Host "  ================================================================" -ForegroundColor Yellow
+    Write-Host ""
+
+    if ($SkipPrompt) {
+        Write-Host "  [*] Mode automation (-Out) : demarrage dans 8s (Ctrl+C pour annuler)..." -ForegroundColor DarkGray
+        Start-Sleep -Seconds 8
+        return @{ Ok = $true; EtaLabel = $etaLabel }
+    }
+
+    Write-Host "  [Y] Oui — lancer le benchmark maintenant" -ForegroundColor Green
+    Write-Host "  [N] Non — annuler" -ForegroundColor DarkGray
+    try {
+        $c = [string](Read-Host "  Lancer le test? (Y/N) [N]").Trim()
+    } catch {
+        $c = "N"
+    }
+    if ($c -match '^(o|oui|y|yes)$') {
+        Write-Host "  [*] Demarrage dans 3 secondes..." -ForegroundColor Cyan
+        for ($i = 3; $i -ge 1; $i--) {
+            Write-Host ("      {0}..." -f $i) -ForegroundColor DarkGray
+            Start-Sleep -Seconds 1
+        }
+        return @{ Ok = $true; EtaLabel = $etaLabel }
+    }
+    Write-Host "  [--] Benchmark annule." -ForegroundColor Yellow
+    return @{ Ok = $false; EtaLabel = $etaLabel }
+}
+
 # MENU [4] / -Action bench — compare Stock vs FA vs FA+Q8 (moyenne de 3 passes chacune)
 # Modifie temporairement les flags Machine pendant le test, puis RESTAURE l'etat initial.
 function Run-Benchmark {
@@ -2032,7 +2184,24 @@ function Run-Benchmark {
     }
 
     $passCount = if ($modelQueue.Count -gt 1) { 2 } else { 3 }  # multi: 2 passes pour rester raisonnable
+    $confirm = Confirm-BenchmarkStart -ModelQueue $modelQueue -PassCount $passCount -SkipPrompt:([bool]$OutPath)
+    if (-not $confirm.Ok) { return }
+
+    Start-BenchmarkElapsedTimer -EtaLabel $confirm.EtaLabel
     $multiRows = @()
+    $bestMode = "Stock"
+    $testModel = $modelQueue[0].Name
+    $benchCtx = [int]$modelQueue[0].Ctx
+    $resStock = @{ Eval = 0; Prompt = 0 }
+    $resSpeed = @{ Eval = 0; Prompt = 0 }
+    $resContext = @{ Eval = 0; Prompt = 0 }
+    $gainSpeedE = 0; $gainCtxE = 0
+    $gainSpeedStr = "0 %"; $gainCtxStr = "0 %"
+    $hw = $null
+    $timestamp = $null
+    $report = ""
+
+    try {
 
     # Pour UN mode donne : 1 warm-up + N generations chronometrees → moyenne t/s
     function Execute-3Passes {
@@ -2043,11 +2212,13 @@ function Run-Benchmark {
             [int]$TimedPasses = 3
         )
         Write-Host "`n[*] $PhaseName ($TimedPasses passes)..." -ForegroundColor Yellow
+        Update-BenchChrono -Phase $PhaseName
         Write-Host "  [*] Cache bust: New-HeavyStressPrompt() + keep_alive=0" -ForegroundColor DarkGray
 
         Write-Host "  $($t.bench_warmup)" -ForegroundColor DarkGray
         $warmPrompt = New-HeavyStressPrompt
         $warm = Invoke-OllamaGenerateStats -Model $ModelName -Prompt $warmPrompt -NumPredict 16 -NumCtx $NumCtx -KeepAlive 0
+        Update-BenchChrono -Phase "$PhaseName warm-up"
         if (-not $warm.Ok) {
             if ($warm.Oom) {
                 Write-Host "  $($t.bench_oom)" -ForegroundColor Yellow
@@ -2066,6 +2237,7 @@ function Run-Benchmark {
         $eRates = @()
 
         for ($i = 1; $i -le $TimedPasses; $i++) {
+            Update-BenchChrono -Phase "$PhaseName passe $i/$TimedPasses"
             Write-Host "  -> Passe $i/$TimedPasses..." -NoNewline -ForegroundColor Gray
             $realPrompt = New-HeavyStressPrompt
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -2189,11 +2361,6 @@ function Run-Benchmark {
 "@
     }
 
-    # Restauration flags Machine d'origine
-    Write-Host "`n[*] Restauration de l'etat initial de votre machine..." -ForegroundColor Cyan
-    Sync-OllamaProcessEnv -FlashAttention $origFA -KvCacheType $origKV -HostBind $origHost
-    Restart-Ollama -WaitReady
-
     $report = @"
 ================================================================================
  RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO
@@ -2231,7 +2398,7 @@ $($reportBlocks -join "`n")
             if ($OutPath -match '\.json$') {
                 $jsonObj = [ordered]@{
                     tool = "Ollama-Turbo-RTX"; timestamp = $timestamp; hardware = $hw
-                    passes = $passCount; results = $multiRows
+                    passes = $passCount; results = $multiRows; eta = $confirm.EtaLabel
                 }
                 ($jsonObj | ConvertTo-Json -Depth 6) | Set-Content -Path $OutPath -Encoding UTF8
                 Write-Host ("[OK] JSON: {0}" -f $OutPath) -ForegroundColor Green
@@ -2251,7 +2418,17 @@ $($reportBlocks -join "`n")
         }
     }
 
-    Show-TurboNotification -Title "Bench termine" -Body ("{0} modele(s) — meilleur: {1}" -f $modelQueue.Count, $bestMode) -Force:$NotifyAfter
+    } finally {
+        # Toujours restaurer les flags + arreter le chrono (meme si erreur / Ctrl+C partiel)
+        try {
+            Write-Host "`n[*] Restauration de l'etat initial de votre machine..." -ForegroundColor Cyan
+            Sync-OllamaProcessEnv -FlashAttention $origFA -KvCacheType $origKV -HostBind $origHost
+            Restart-Ollama -WaitReady
+        } catch {}
+        $totalElapsed = Stop-BenchmarkElapsedTimer
+        $elapsedStr = Format-BenchElapsed -Elapsed $totalElapsed
+        Show-TurboNotification -Title "Bench termine" -Body ("{0} modele(s) en {1} — meilleur: {2}" -f $modelQueue.Count, $elapsedStr, $bestMode) -Force:$NotifyAfter
+    }
 }
 
 function Stop-BenchmarkHost {
