@@ -789,7 +789,45 @@ function Get-LatestOllamaRelease {
     }
 }
 
-# Telecharge OllamaSetup.exe via CDN ollama.com (plus rapide que GitHub), fallback release GitHub
+# DL rapide : jamais Invoke-WebRequest avec barre (x50-100 plus lent). Ordre: choco > winget > curl.exe > IWR silencieux
+function Save-OllamaSetupFast {
+    param([string]$Url, [string]$Dest)
+
+    # 1) curl.exe natif Windows = meme vitesse qu'un navigateur
+    $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+    if ($curl) {
+        Write-Host "  [*] Fast download via curl.exe ..." -ForegroundColor Cyan
+        & curl.exe -L --fail --retry 3 --retry-delay 1 -o $Dest $Url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+        Write-Host "  [!!] curl failed (exit $LASTEXITCODE) — trying next method..." -ForegroundColor Yellow
+    }
+
+    # 2) BITS (arriere-plan Windows, souvent rapide)
+    try {
+        Write-Host "  [*] Fast download via BITS ..." -ForegroundColor Cyan
+        Start-BitsTransfer -Source $Url -Destination $Dest -ErrorAction Stop
+        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+    } catch {
+        Write-Host "  [!!] BITS failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+
+    # 3) IWR SANS barre de progression (le ProgressPreference est le vrai bug de lenteur)
+    try {
+        Write-Host "  [*] Fallback Invoke-WebRequest (progress OFF) ..." -ForegroundColor DarkGray
+        $prev = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $Dest -UseBasicParsing -TimeoutSec 600
+        } finally {
+            $ProgressPreference = $prev
+        }
+        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+    } catch {
+        Write-Host "  [!!] IWR failed: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    return $false
+}
+
 function Update-OllamaFromRelease {
     param($LatestRelease)
 
@@ -808,46 +846,78 @@ function Update-OllamaFromRelease {
     Write-Host "  [*] Stopping local Ollama processes (needed for installer)..." -ForegroundColor DarkGray
     Stop-OllamaSilent | Out-Null
 
-    $dest = Join-Path $env:TEMP "OllamaSetup-$tag.exe"
-    # Preferer le CDN officiel (souvent plus rapide) ; GitHub en secours
-    $urls = @($cdnUrl)
-    if ($githubUrl -and $githubUrl -ne $cdnUrl) { $urls += $githubUrl }
+    $installedViaPkg = $false
 
-    $downloaded = $false
-    foreach ($setupUrl in $urls) {
+    # --- Methode 1 : Chocolatey (si present) — pas de gros DL manuel ---
+    $choco = Get-Command "choco" -ErrorAction SilentlyContinue
+    if ($choco) {
+        Write-Host "  [*] Chocolatey detecte — choco upgrade ollama -y ..." -ForegroundColor Cyan
         try {
-            Write-Host "  [*] Downloading (~500 MB) from: $setupUrl" -ForegroundColor DarkGray
-            Write-Host "      -> $dest" -ForegroundColor DarkGray
-            Invoke-WebRequest -Uri $setupUrl -OutFile $dest -UseBasicParsing -TimeoutSec 600
-            if ((Test-Path $dest) -and ((Get-Item $dest).Length -ge 1MB)) {
-                $downloaded = $true
-                break
-            }
+            & choco upgrade ollama -y --no-progress
+            if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
+            else { Write-Host "  [!!] choco exit $LASTEXITCODE — essai methode suivante..." -ForegroundColor Yellow }
         } catch {
-            Write-Host "  [!!] Failed ($setupUrl): $($_.Exception.Message)" -ForegroundColor Yellow
-            if ($setupUrl -eq $cdnUrl -and $githubUrl) {
-                Write-Host "  [*] Retry via GitHub releases..." -ForegroundColor DarkGray
+            Write-Host "  [!!] choco error: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    # --- Methode 2 : winget (si present) ---
+    if (-not $installedViaPkg) {
+        $winget = $null
+        foreach ($wg in @(
+            (Get-Command "winget.exe" -ErrorAction SilentlyContinue),
+            (Get-Item "$env:LocalAppData\Microsoft\WindowsApps\winget.exe" -ErrorAction SilentlyContinue),
+            (Get-Item "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller*\winget.exe" -ErrorAction SilentlyContinue | Select-Object -First 1)
+        )) {
+            if ($wg) { $winget = if ($wg.Source) { $wg.Source } else { $wg.FullName }; break }
+        }
+        if ($winget) {
+            Write-Host "  [*] winget detecte — upgrade Ollama.Ollama ..." -ForegroundColor Cyan
+            try {
+                & $winget upgrade --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements --disable-interactivity
+                if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
+                else {
+                    & $winget install --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements --disable-interactivity
+                    if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
+                    else { Write-Host "  [!!] winget exit $LASTEXITCODE — essai curl..." -ForegroundColor Yellow }
+                }
+            } catch {
+                Write-Host "  [!!] winget error: $($_.Exception.Message)" -ForegroundColor Yellow
             }
         }
     }
-    if (-not $downloaded) {
-        Write-Host "  [!!] Download failed from all mirrors." -ForegroundColor Red
-        Write-Host "       Manual: https://ollama.com/download" -ForegroundColor Yellow
-        return $false
-    }
 
-    if (-not (Test-Path $dest) -or ((Get-Item $dest).Length -lt 1MB)) {
-        Write-Host "  [!!] Installer missing or too small — abort." -ForegroundColor Red
-        return $false
-    }
+    # --- Methode 3 : curl.exe / BITS / IWR silencieux (meme URL que le navigateur) ---
+    if (-not $installedViaPkg) {
+        $dest = Join-Path $env:TEMP "OllamaSetup-$tag.exe"
+        $urls = @($cdnUrl)
+        if ($githubUrl -and $githubUrl -ne $cdnUrl) { $urls += $githubUrl }
 
-    Write-Host "  [*] Launching OllamaSetup.exe (accept UAC if prompted)..." -ForegroundColor Yellow
-    try {
-        $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
-        Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
-    } catch {
-        Write-Host "  [!!] Could not start installer: $($_.Exception.Message)" -ForegroundColor Red
-        return $false
+        $downloaded = $false
+        foreach ($setupUrl in $urls) {
+            Write-Host "  [*] Download URL: $setupUrl" -ForegroundColor DarkGray
+            Write-Host "      -> $dest" -ForegroundColor DarkGray
+            if (Save-OllamaSetupFast -Url $setupUrl -Dest $dest) {
+                $downloaded = $true
+                break
+            }
+            Write-Host "  [!!] Mirror failed, trying next..." -ForegroundColor Yellow
+        }
+        if (-not $downloaded) {
+            Write-Host "  [!!] Download failed from all mirrors." -ForegroundColor Red
+            Write-Host "       Manual (2s in browser): https://ollama.com/download" -ForegroundColor Yellow
+            return $false
+        }
+
+        $mb = [math]::Round((Get-Item $dest).Length / 1MB, 1)
+        Write-Host "  [OK] Downloaded ${mb} MB — launching installer..." -ForegroundColor Green
+        try {
+            $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
+            Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
+        } catch {
+            Write-Host "  [!!] Could not start installer: $($_.Exception.Message)" -ForegroundColor Red
+            return $false
+        }
     }
 
     Start-Sleep -Seconds 2
