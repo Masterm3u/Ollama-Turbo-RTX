@@ -754,19 +754,72 @@ function Invoke-HistoryRestore {
     Show-Status
 }
 
-# MENU [6] — diagnostic lecture seule : Ollama, nvidia-smi, API, modele charge
+# Extrait "0.35.1" depuis "ollama version is 0.35.1" ou "v0.40.11"
+function ConvertTo-OllamaVersionObject {
+    param([string]$Raw)
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return $null }
+    if ($Raw -match '(\d+\.\d+\.\d+(?:-[\w\.]+)?)') {
+        try { return [version]($Matches[1] -replace '-.*$', '') } catch { return $null }
+    }
+    return $null
+}
+
+# Interroge GitHub Releases (ollama/ollama) pour la derniere version publique
+function Get-LatestOllamaRelease {
+    try {
+        $headers = @{
+            "User-Agent" = "Ollama-Turbo-RTX"
+            "Accept"     = "application/vnd.github+json"
+        }
+        $r = Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest" -Headers $headers -TimeoutSec 8
+        $tag = [string]$r.tag_name
+        return [pscustomobject]@{
+            Tag         = $tag
+            Version     = (ConvertTo-OllamaVersionObject $tag)
+            PublishedAt = $r.published_at
+            Url         = $r.html_url
+            Ok          = $true
+        }
+    } catch {
+        return [pscustomobject]@{ Ok = $false; Error = $_.Exception.Message }
+    }
+}
+
+# MENU [6] — diagnostic lecture seule : Ollama, nvidia-smi, API, modele charge + maj version
 function Invoke-HealthCheck {
     Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
     Write-Host ("=" * 60) -ForegroundColor DarkGray
 
     $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
+    $localVerObj = $null
     if ($ollamaCmd) {
         $ver = ""
         try { $ver = (& ollama --version 2>$null | Out-String).Trim() } catch {}
         Write-Host "  [OK] ollama CLI : $($ollamaCmd.Source)" -ForegroundColor Green
         if ($ver) { Write-Host "       version   : $ver" -ForegroundColor DarkGray }
+        $localVerObj = ConvertTo-OllamaVersionObject $ver
+
+        # Comparaison avec la derniere release GitHub (https://github.com/ollama/ollama/releases)
+        Write-Host "  [*] Checking latest Ollama release on GitHub..." -ForegroundColor DarkGray
+        $latest = Get-LatestOllamaRelease
+        if ($latest.Ok -and $latest.Version -and $localVerObj) {
+            if ($localVerObj -ge $latest.Version) {
+                Write-Host ("  [OK] Ollama is UP TO DATE  (installed {0} = latest {1})" -f $localVerObj, $latest.Tag) -ForegroundColor Green
+            } else {
+                Write-Host ("  [!!] Ollama UPDATE AVAILABLE" ) -ForegroundColor Yellow
+                Write-Host ("       installed : {0}" -f $localVerObj) -ForegroundColor Yellow
+                Write-Host ("       latest    : {0}  (published {1})" -f $latest.Tag, $latest.PublishedAt) -ForegroundColor Yellow
+                Write-Host "       download  : https://ollama.com/download" -ForegroundColor Cyan
+                Write-Host ("       release   : {0}" -f $latest.Url) -ForegroundColor DarkGray
+            }
+        } elseif ($latest.Ok -and $latest.Tag) {
+            Write-Host ("  [--] Latest on GitHub : {0} (could not parse local version)" -f $latest.Tag) -ForegroundColor DarkGray
+        } else {
+            Write-Host "  [--] Could not reach GitHub releases (offline / rate limit)" -ForegroundColor DarkGray
+        }
     } else {
         Write-Host "  [!!] ollama CLI not found in PATH" -ForegroundColor Red
+        Write-Host "       Install : https://ollama.com/download" -ForegroundColor Cyan
     }
 
     $proc = Get-Process -Name "ollama*" -ErrorAction SilentlyContinue
