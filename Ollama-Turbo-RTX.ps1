@@ -789,29 +789,32 @@ function Get-LatestOllamaRelease {
     }
 }
 
-# DL rapide : jamais Invoke-WebRequest avec barre (x50-100 plus lent). Ordre: choco > winget > curl.exe > IWR silencieux
+# DL rapide : curl.exe EN PREMIER (choco/winget souvent lents ou bloques sur ~1.5 Go)
 function Save-OllamaSetupFast {
     param([string]$Url, [string]$Dest)
 
-    # 1) curl.exe natif Windows = meme vitesse qu'un navigateur
+    $minBytes = 50MB  # OllamaSetup ~1.5 Go ; refuse les fichiers tronques
+
+    # 1) curl.exe natif Windows = meme vitesse qu'un navigateur (~300 Mo/s chez nous)
     $curl = Get-Command "curl.exe" -ErrorAction SilentlyContinue
     if ($curl) {
-        Write-Host "  [*] Fast download via curl.exe ..." -ForegroundColor Cyan
-        & curl.exe -L --fail --retry 3 --retry-delay 1 -o $Dest $Url
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+        Write-Host "  [*] Telechargement rapide via curl.exe (~1.5 Go, quelques secondes)..." -ForegroundColor Cyan
+        # -# = barre compacte ; -L suit le 307 ollama.com -> GitHub
+        & curl.exe -L --fail --retry 3 --retry-delay 1 -# -o $Dest $Url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $Dest) -and ((Get-Item $Dest).Length -ge $minBytes)) { return $true }
         Write-Host "  [!!] curl failed (exit $LASTEXITCODE) — trying next method..." -ForegroundColor Yellow
     }
 
-    # 2) BITS (arriere-plan Windows, souvent rapide)
+    # 2) BITS
     try {
         Write-Host "  [*] Fast download via BITS ..." -ForegroundColor Cyan
         Start-BitsTransfer -Source $Url -Destination $Dest -ErrorAction Stop
-        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge $minBytes)) { return $true }
     } catch {
         Write-Host "  [!!] BITS failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 
-    # 3) IWR SANS barre de progression (le ProgressPreference est le vrai bug de lenteur)
+    # 3) IWR SANS barre (ProgressPreference = vrai bug de lenteur)
     try {
         Write-Host "  [*] Fallback Invoke-WebRequest (progress OFF) ..." -ForegroundColor DarkGray
         $prev = $ProgressPreference
@@ -821,7 +824,7 @@ function Save-OllamaSetupFast {
         } finally {
             $ProgressPreference = $prev
         }
-        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge 1MB)) { return $true }
+        if ((Test-Path $Dest) -and ((Get-Item $Dest).Length -ge $minBytes)) { return $true }
     } catch {
         Write-Host "  [!!] IWR failed: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -840,84 +843,85 @@ function Update-OllamaFromRelease {
             $githubUrl = [string]$LatestRelease.SetupUrl
         }
     }
+    # Lien direct GitHub latest (evite un hop inutile si CDN redirect deja)
+    if (-not $githubUrl) {
+        $githubUrl = "https://github.com/ollama/ollama/releases/latest/download/OllamaSetup.exe"
+    }
     $tag = if ($LatestRelease -and $LatestRelease.Tag) { $LatestRelease.Tag } else { "latest" }
 
     Write-Host "`n  [*] Preparing Ollama update to $tag ..." -ForegroundColor Cyan
     Write-Host "  [*] Stopping local Ollama processes (needed for installer)..." -ForegroundColor DarkGray
     Stop-OllamaSilent | Out-Null
 
-    $installedViaPkg = $false
+    # --- Methode PRINCIPALE : curl.exe (fiable + rapide ; choco saute car il bloque souvent) ---
+    $dest = Join-Path $env:TEMP ("OllamaSetup-{0}-{1}.exe" -f $tag, (Get-Date -Format 'HHmmss'))
+    $urls = @($cdnUrl, $githubUrl) | Select-Object -Unique
 
-    # --- Methode 1 : Chocolatey (si present) — pas de gros DL manuel ---
-    $choco = Get-Command "choco" -ErrorAction SilentlyContinue
-    if ($choco) {
-        Write-Host "  [*] Chocolatey detecte — choco upgrade ollama -y ..." -ForegroundColor Cyan
-        try {
-            & choco upgrade ollama -y --no-progress
-            if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
-            else { Write-Host "  [!!] choco exit $LASTEXITCODE — essai methode suivante..." -ForegroundColor Yellow }
-        } catch {
-            Write-Host "  [!!] choco error: $($_.Exception.Message)" -ForegroundColor Yellow
+    $downloaded = $false
+    foreach ($setupUrl in $urls) {
+        Write-Host "  [*] URL: $setupUrl" -ForegroundColor DarkGray
+        Write-Host "      -> $dest" -ForegroundColor DarkGray
+        # Nettoyer un eventuel fichier partiel non verrouille
+        if (Test-Path $dest) { Remove-Item $dest -Force -ErrorAction SilentlyContinue }
+        if (Save-OllamaSetupFast -Url $setupUrl -Dest $dest) {
+            $downloaded = $true
+            break
         }
+        Write-Host "  [!!] Mirror failed, trying next..." -ForegroundColor Yellow
     }
 
-    # --- Methode 2 : winget (si present) ---
-    if (-not $installedViaPkg) {
-        $winget = $null
-        foreach ($wg in @(
-            (Get-Command "winget.exe" -ErrorAction SilentlyContinue),
-            (Get-Item "$env:LocalAppData\Microsoft\WindowsApps\winget.exe" -ErrorAction SilentlyContinue),
-            (Get-Item "$env:ProgramFiles\WindowsApps\Microsoft.DesktopAppInstaller*\winget.exe" -ErrorAction SilentlyContinue | Select-Object -First 1)
-        )) {
-            if ($wg) { $winget = if ($wg.Source) { $wg.Source } else { $wg.FullName }; break }
-        }
-        if ($winget) {
-            Write-Host "  [*] winget detecte — upgrade Ollama.Ollama ..." -ForegroundColor Cyan
-            try {
-                & $winget upgrade --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements --disable-interactivity
-                if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
-                else {
-                    & $winget install --id Ollama.Ollama -e --accept-package-agreements --accept-source-agreements --disable-interactivity
-                    if ($LASTEXITCODE -eq 0) { $installedViaPkg = $true }
-                    else { Write-Host "  [!!] winget exit $LASTEXITCODE — essai curl..." -ForegroundColor Yellow }
+    if (-not $downloaded) {
+        # Secours optionnel : Chocolatey avec TIMEOUT (ne plus bloquer indefiniment)
+        $choco = Get-Command "choco" -ErrorAction SilentlyContinue
+        if ($choco) {
+            Write-Host "  [*] Secours Chocolatey (timeout 90s)..." -ForegroundColor Yellow
+            $chocoOk = $false
+            $job = Start-Job {
+                param($c)
+                & $c upgrade ollama -y --no-progress 2>&1 | Out-Null
+                $LASTEXITCODE
+            } -ArgumentList $choco.Source
+            if (Wait-Job $job -Timeout 90) {
+                $code = Receive-Job $job
+                Remove-Job $job -Force -ErrorAction SilentlyContinue
+                if ($code -eq 0) { $chocoOk = $true }
+                else { Write-Host "  [!!] choco exit $code" -ForegroundColor Yellow }
+            } else {
+                Write-Host "  [!!] Chocolatey timeout (90s) — abandonne." -ForegroundColor Yellow
+                Stop-Job $job -ErrorAction SilentlyContinue
+                Remove-Job $job -Force -ErrorAction SilentlyContinue
+                Get-Process -Name choco -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            }
+            if ($chocoOk) {
+                Start-Sleep -Seconds 2
+                $verLine = ""
+                try {
+                    $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
+                    if ($ollamaCmd) { $verLine = (& ollama --version 2>$null | Out-String).Trim() }
+                } catch {}
+                $now = ConvertTo-OllamaVersionObject $verLine
+                if ($now -and $LatestRelease.Version -and $now -ge $LatestRelease.Version) {
+                    Write-Host ("  [OK] Ollama updated via Chocolatey -> {0}" -f $verLine) -ForegroundColor Green
+                    Start-OllamaSilent | Out-Null
+                    Wait-OllamaReady | Out-Null
+                    return $true
                 }
-            } catch {
-                Write-Host "  [!!] winget error: $($_.Exception.Message)" -ForegroundColor Yellow
             }
         }
+
+        Write-Host "  [!!] Download failed from all mirrors." -ForegroundColor Red
+        Write-Host "       Manual: https://ollama.com/download" -ForegroundColor Yellow
+        return $false
     }
 
-    # --- Methode 3 : curl.exe / BITS / IWR silencieux (meme URL que le navigateur) ---
-    if (-not $installedViaPkg) {
-        $dest = Join-Path $env:TEMP "OllamaSetup-$tag.exe"
-        $urls = @($cdnUrl)
-        if ($githubUrl -and $githubUrl -ne $cdnUrl) { $urls += $githubUrl }
-
-        $downloaded = $false
-        foreach ($setupUrl in $urls) {
-            Write-Host "  [*] Download URL: $setupUrl" -ForegroundColor DarkGray
-            Write-Host "      -> $dest" -ForegroundColor DarkGray
-            if (Save-OllamaSetupFast -Url $setupUrl -Dest $dest) {
-                $downloaded = $true
-                break
-            }
-            Write-Host "  [!!] Mirror failed, trying next..." -ForegroundColor Yellow
-        }
-        if (-not $downloaded) {
-            Write-Host "  [!!] Download failed from all mirrors." -ForegroundColor Red
-            Write-Host "       Manual (2s in browser): https://ollama.com/download" -ForegroundColor Yellow
-            return $false
-        }
-
-        $mb = [math]::Round((Get-Item $dest).Length / 1MB, 1)
-        Write-Host "  [OK] Downloaded ${mb} MB — launching installer..." -ForegroundColor Green
-        try {
-            $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
-            Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
-        } catch {
-            Write-Host "  [!!] Could not start installer: $($_.Exception.Message)" -ForegroundColor Red
-            return $false
-        }
+    $mb = [math]::Round((Get-Item $dest).Length / 1MB, 1)
+    Write-Host "  [OK] Downloaded ${mb} MB — launching installer..." -ForegroundColor Green
+    try {
+        $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
+        Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  [!!] Could not start installer: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
     }
 
     Start-Sleep -Seconds 2
@@ -930,7 +934,7 @@ function Update-OllamaFromRelease {
     } catch {}
     $now = ConvertTo-OllamaVersionObject $verLine
     if ($now -and $LatestRelease.Version -and $now -ge $LatestRelease.Version) {
-        Write-Host ("  [OK] Ollama updated successfully -> {0}" -f $verLine) -ForegroundColor Green
+        Write-Host ("  [OK] Ollama updated successfully -> {0}" -f ($(if ($verLine -match '(\d+\.\d+\.\d+)') { $Matches[1] } else { $verLine }))) -ForegroundColor Green
         Write-Host "  [*] Restarting Ollama..." -ForegroundColor DarkGray
         Start-OllamaSilent | Out-Null
         Wait-OllamaReady | Out-Null
@@ -953,10 +957,11 @@ function Invoke-HealthCheck {
     $localVerObj = $null
     if ($ollamaCmd) {
         $ver = ""
-        try { $ver = (& ollama --version 2>$null | Out-String).Trim() } catch {}
+        try { $ver = (& ollama --version 2>&1 | Out-String).Trim() } catch {}
         Write-Host "  [OK] ollama CLI : $($ollamaCmd.Source)" -ForegroundColor Green
-        if ($ver) { Write-Host "       version   : $ver" -ForegroundColor DarkGray }
         $localVerObj = ConvertTo-OllamaVersionObject $ver
+        $verShow = if ($localVerObj) { "$localVerObj" } elseif ($ver) { ($ver -split "`n" | Select-Object -Last 1).Trim() } else { "?" }
+        Write-Host "       version   : $verShow" -ForegroundColor DarkGray
 
         Write-Host "  [*] Checking latest Ollama release on GitHub..." -ForegroundColor DarkGray
         $latest = Get-LatestOllamaRelease
