@@ -102,7 +102,7 @@ $i18n = @{
         opt_5          = "  [5] Change Language / Changer de langue"
         opt_q          = "  [Q] Exit"
         prompt_choice  = "Enter your choice (1-5 or Q)"
-        support_tip    = "  Star the repo + Buy me a coffee: buymeacoffee.com/groupeplatinium"
+        support_tip    = "  Star the repo + Buy me a coffee: buymeacoffee.com/masterm3u"
     }
     fr = @{
         admin_req      = "[!] Privileges Administrateur requis pour modifier les variables systeme."
@@ -189,7 +189,7 @@ $i18n = @{
         opt_5          = "  [5] Changer de langue / Switch Language"
         opt_q          = "  [Q] Quitter"
         prompt_choice  = "Entrez votre choix (1-5 ou Q)"
-        support_tip    = "  Etoile GitHub + cafe : buymeacoffee.com/groupeplatinium"
+        support_tip    = "  Etoile GitHub + cafe : buymeacoffee.com/masterm3u"
     }
     es = @{
         admin_req      = "[!] Se requieren permisos de administrador."
@@ -276,7 +276,7 @@ $i18n = @{
         opt_5          = "  [5] Cambiar idioma / Change Language"
         opt_q          = "  [Q] Salir"
         prompt_choice  = "Introduce tu opcion (1-5 o Q)"
-        support_tip    = "  Estrella GitHub + cafe: buymeacoffee.com/groupeplatinium"
+        support_tip    = "  Estrella GitHub + cafe: buymeacoffee.com/masterm3u"
     }
     de = @{
         admin_req      = "[!] Administratorrechte erforderlich."
@@ -363,7 +363,7 @@ $i18n = @{
         opt_5          = "  [5] Sprache aendern / Change Language"
         opt_q          = "  [Q] Beenden"
         prompt_choice  = "Eingabe (1-5 oder Q)"
-        support_tip    = "  GitHub-Stern + Kaffee: buymeacoffee.com/groupeplatinium"
+        support_tip    = "  GitHub-Stern + Kaffee: buymeacoffee.com/masterm3u"
     }
 }
 
@@ -1503,7 +1503,7 @@ do {
       Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
     Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
-    Write-Host "      Star the repo  |  buymeacoffee.com/groupeplatinium" -ForegroundColor DarkYellow
+    Write-Host "      Star the repo  |  buymeacoffee.com/masterm3u" -ForegroundColor DarkYellow
 
     Show-Status
     Show-Menu

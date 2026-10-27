@@ -5,7 +5,7 @@
 [![GPU: RTX 30/40/50](https://img.shields.io/badge/NVIDIA-RTX%2030%20%2F%2040%20%2F%2050-76B900?logo=nvidia)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/groupeplatinium)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
 [![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20after%20update-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
@@ -160,13 +160,13 @@ Demo GIF instructions: **[assets/README.md](assets/README.md)**.
 If this saved you time or VRAM:
 
 1. **Star the repo** → [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX) (helps others find it)
-2. **Buy me a coffee** → [buymeacoffee.com/groupeplatinium](https://buymeacoffee.com/groupeplatinium)
+2. **Buy me a coffee** → [buymeacoffee.com/masterm3u](https://buymeacoffee.com/masterm3u)
 
-<a href="https://buymeacoffee.com/groupeplatinium" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
+<a href="https://buymeacoffee.com/masterm3u" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>
 
 ### 👤 Author
 
-[Masterm3u](https://github.com/Masterm3u) / [groupeplatinium](https://buymeacoffee.com/groupeplatinium) — [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX)
+[Masterm3u](https://github.com/Masterm3u) / [Buy me a coffee](https://buymeacoffee.com/masterm3u) — [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 
 ### 📄 License
 
