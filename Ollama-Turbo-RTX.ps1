@@ -100,9 +100,22 @@ $i18n = @{
         opt_3_h1       = "      Removes all Turbo flags and restores Ollama defaults"
         opt_4          = "  [4] Run Real-Time Speed Benchmark (opens in a new window)"
         opt_5          = "  [5] Change Language / Changer de langue"
+        opt_6          = "  [6] System Health Check (Ollama / driver / API)"
+        opt_7          = "  [7] Smart GPU Preset (auto by VRAM)"
+        opt_8          = "  [8] Workflow Preset: Coding (Cursor) or Fast Chat"
+        opt_9          = "  [9] Undo / Restore from history snapshot"
         opt_q          = "  [Q] Exit"
-        prompt_choice  = "Enter your choice (1-5 or Q)"
+        prompt_choice  = "Enter your choice (1-9 or Q)"
         support_tip    = "  Star the repo + Buy me a coffee: buymeacoffee.com/masterm3u"
+        health_title   = " SYSTEM HEALTH CHECK"
+        smart_title    = " SMART GPU PRESET"
+        workflow_title = " WORKFLOW PRESET"
+        history_title  = " TURBO HISTORY / UNDO"
+        history_empty  = "[!] No snapshots yet. Change a Turbo mode first."
+        history_saved  = "[OK] Snapshot saved: {0}"
+        history_restored = "[OK] Restored snapshot from {0}"
+        export_ok      = "[OK] Exported: {0}"
+        reddit_card    = "Reddit / Discord share card copied below — paste freely."
     }
     fr = @{
         admin_req      = "[!] Privileges Administrateur requis pour modifier les variables systeme."
@@ -187,9 +200,22 @@ $i18n = @{
         opt_3_h1       = "      Supprime tous les drapeaux Turbo et remet Ollama par defaut"
         opt_4          = "  [4] Lancer un benchmark de vitesse (ouvre une autre fenetre)"
         opt_5          = "  [5] Changer de langue / Switch Language"
+        opt_6          = "  [6] Diagnostic systeme (Ollama / driver / API)"
+        opt_7          = "  [7] Preset GPU intelligent (auto selon VRAM)"
+        opt_8          = "  [8] Preset workflow : Coding (Cursor) ou Chat rapide"
+        opt_9          = "  [9] Annuler / Restaurer un snapshot d'historique"
         opt_q          = "  [Q] Quitter"
-        prompt_choice  = "Entrez votre choix (1-5 ou Q)"
+        prompt_choice  = "Entrez votre choix (1-9 ou Q)"
         support_tip    = "  Etoile GitHub + cafe : buymeacoffee.com/masterm3u"
+        health_title   = " DIAGNOSTIC SYSTEME"
+        smart_title    = " PRESET GPU INTELLIGENT"
+        workflow_title = " PRESET WORKFLOW"
+        history_title  = " HISTORIQUE / UNDO"
+        history_empty  = "[!] Aucun snapshot. Changez d'abord un mode Turbo."
+        history_saved  = "[OK] Snapshot enregistre : {0}"
+        history_restored = "[OK] Snapshot restaure : {0}"
+        export_ok      = "[OK] Export : {0}"
+        reddit_card    = "Carte a coller sur Reddit / Discord ci-dessous."
     }
     es = @{
         admin_req      = "[!] Se requieren permisos de administrador."
@@ -275,7 +301,7 @@ $i18n = @{
         opt_4          = "  [4] Ejecutar benchmark de velocidad (abre otra ventana)"
         opt_5          = "  [5] Cambiar idioma / Change Language"
         opt_q          = "  [Q] Salir"
-        prompt_choice  = "Introduce tu opcion (1-5 o Q)"
+        prompt_choice  = "Introduce tu opcion (1-9 o Q)"
         support_tip    = "  Estrella GitHub + cafe: buymeacoffee.com/masterm3u"
     }
     de = @{
@@ -362,7 +388,7 @@ $i18n = @{
         opt_4          = "  [4] Live-Benchmark ausfuehren (neues Fenster)"
         opt_5          = "  [5] Sprache aendern / Change Language"
         opt_q          = "  [Q] Beenden"
-        prompt_choice  = "Eingabe (1-5 oder Q)"
+        prompt_choice  = "Eingabe (1-9 oder Q)"
         support_tip    = "  GitHub-Stern + Kaffee: buymeacoffee.com/masterm3u"
     }
 }
@@ -382,7 +408,9 @@ function Resolve-Language {
 }
 
 $CurrentLang = Resolve-Language
-$t = $i18n[$CurrentLang]
+# Fusion : anglais = base (nouvelles cles), langue active ecrase les traductions
+$t = @{}; foreach ($k in $i18n.en.Keys) { $t[$k] = $i18n.en[$k] }
+if ($CurrentLang -ne "en") { foreach ($k in $i18n[$CurrentLang].Keys) { $t[$k] = $i18n[$CurrentLang][$k] } }
 
 # Chemin disque du .ps1 courant (requis pour relancer en Admin via -File)
 function Get-ScriptPath {
@@ -658,6 +686,271 @@ function Get-SystemHwInfo {
     return $script:CachedSystemHw
 }
 
+# Dossier local pour historique / exports (sous %LOCALAPPDATA%, pas dans Program Files)
+function Get-TurboDataDir {
+    $dir = Join-Path $env:LOCALAPPDATA "Ollama-Turbo-RTX"
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    return $dir
+}
+
+function Get-TurboHistoryPath { return (Join-Path (Get-TurboDataDir) "history.json") }
+
+# Capture l'etat Machine AVANT un changement (FA / KV / Host) pour permettre Undo
+function Save-TurboHistorySnapshot {
+    param([string]$Reason = "change")
+    try {
+        $path = Get-TurboHistoryPath
+        $entries = @()
+        if (Test-Path $path) {
+            $raw = Get-Content -Path $path -Raw -ErrorAction SilentlyContinue
+            if ($raw) { $entries = @($raw | ConvertFrom-Json) }
+        }
+        $snap = [pscustomobject]@{
+            Id        = [guid]::NewGuid().ToString("N").Substring(0, 8)
+            Timestamp = (Get-Date).ToString("o")
+            Reason    = $Reason
+            FA        = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
+            KV        = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
+            Host      = [System.Environment]::GetEnvironmentVariable('OLLAMA_HOST', 'Machine')
+        }
+        $entries = @($snap) + @($entries)
+        if ($entries.Count -gt 30) { $entries = $entries[0..29] }
+        ($entries | ConvertTo-Json -Depth 4) | Set-Content -Path $path -Encoding UTF8
+        Write-Host ($t.history_saved -f "$($snap.Id) @ $($snap.Timestamp)") -ForegroundColor DarkGray
+    } catch {}
+}
+
+# MENU [9] — liste les snapshots et restaure FA/KV/Host d'une entree choisie
+function Invoke-HistoryRestore {
+    Check-Admin
+    Write-Host "`n$($t.history_title)" -ForegroundColor Cyan
+    $path = Get-TurboHistoryPath
+    if (-not (Test-Path $path)) {
+        Write-Host $t.history_empty -ForegroundColor Yellow
+        return
+    }
+    $entries = @((Get-Content $path -Raw | ConvertFrom-Json))
+    if ($entries.Count -lt 1) {
+        Write-Host $t.history_empty -ForegroundColor Yellow
+        return
+    }
+    $max = [math]::Min(10, $entries.Count)
+    for ($i = 0; $i -lt $max; $i++) {
+        $e = $entries[$i]
+        $fa = if ($e.FA) { $e.FA } else { "(none)" }
+        $kv = if ($e.KV) { $e.KV } else { "(none)" }
+        Write-Host ("  [{0}] {1}  reason={2}  FA={3}  KV={4}" -f ($i + 1), $e.Timestamp, $e.Reason, $fa, $kv) -ForegroundColor White
+    }
+    Write-Host "  [0] Cancel" -ForegroundColor DarkGray
+    $pick = Read-Host "Restore which snapshot"
+    if ($pick -notmatch '^[1-9]$' -and $pick -notmatch '^10$') { return }
+    $idx = [int]$pick - 1
+    if ($idx -lt 0 -or $idx -ge $max) { return }
+    $e = $entries[$idx]
+    Save-TurboHistorySnapshot -Reason "before-undo-$($e.Id)"
+    Sync-OllamaProcessEnv -FlashAttention $e.FA -KvCacheType $e.KV -HostBind $(if ($e.Host) { $e.Host } else { $null })
+    Restart-Ollama -WaitReady
+    Write-Host ($t.history_restored -f $e.Timestamp) -ForegroundColor Green
+    Show-Status
+}
+
+# MENU [6] — diagnostic lecture seule : Ollama, nvidia-smi, API, modele charge
+function Invoke-HealthCheck {
+    Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
+    Write-Host ("=" * 60) -ForegroundColor DarkGray
+
+    $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
+    if ($ollamaCmd) {
+        $ver = ""
+        try { $ver = (& ollama --version 2>$null | Out-String).Trim() } catch {}
+        Write-Host "  [OK] ollama CLI : $($ollamaCmd.Source)" -ForegroundColor Green
+        if ($ver) { Write-Host "       version   : $ver" -ForegroundColor DarkGray }
+    } else {
+        Write-Host "  [!!] ollama CLI not found in PATH" -ForegroundColor Red
+    }
+
+    $proc = Get-Process -Name "ollama*" -ErrorAction SilentlyContinue
+    if ($proc) {
+        Write-Host "  [OK] Ollama process running (PID $($proc[0].Id))" -ForegroundColor Green
+    } else {
+        Write-Host "  [!!] No Ollama process running" -ForegroundColor Yellow
+    }
+
+    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+    if ($smi) {
+        try {
+            $line = (& nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
+            Write-Host "  [OK] NVIDIA driver / GPU : $line" -ForegroundColor Green
+        } catch {
+            Write-Host "  [!!] nvidia-smi failed" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  [!!] nvidia-smi not found (NVIDIA driver tools missing?)" -ForegroundColor Yellow
+    }
+
+    try {
+        $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 3 -ErrorAction Stop
+        $count = @($tags.models).Count
+        Write-Host "  [OK] API http://127.0.0.1:11434 reachable ($count local model(s))" -ForegroundColor Green
+    } catch {
+        Write-Host "  [!!] API 127.0.0.1:11434 not reachable" -ForegroundColor Red
+    }
+
+    try {
+        $ps = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 3 -ErrorAction Stop
+        $loaded = @($ps.models)
+        if ($loaded.Count -gt 0) {
+            foreach ($m in $loaded) {
+                Write-Host ("  [OK] Loaded model : {0}" -f $m.name) -ForegroundColor Green
+            }
+        } else {
+            Write-Host "  [--] No model currently loaded in VRAM" -ForegroundColor DarkGray
+        }
+    } catch {}
+
+    $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
+    $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
+    Write-Host ("  [--] Machine FA={0}  KV={1}" -f $(if ($fa) { $fa } else { "(unset)" }), $(if ($kv) { $kv } else { "(unset)" })) -ForegroundColor DarkGray
+    Write-Host ("=" * 60) -ForegroundColor DarkGray
+}
+
+# Retourne un preset selon VRAM detectee (evite OOM sur petites cartes)
+function Get-GpuSmartPreset {
+    $vram = $null
+    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+    if ($smi) {
+        try {
+            $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+            $n = 0.0
+            if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vram = [math]::Round($n / 1024.0, 1) }
+        } catch {}
+    }
+    if (-not $vram) {
+        return @{ Mode = "context"; CtxHint = 8192; Tier = "unknown"; Why = "GPU VRAM unknown — defaulting to Turbo Context (FA+Q8) as safest speed/VRAM trade-off." }
+    }
+    if ($vram -lt 10) {
+        return @{ Mode = "context"; CtxHint = 4096; Tier = "8GB"; Why = "~${vram} GB VRAM: prefer FA+Q8 and moderate context (~4k) to avoid OOM." }
+    }
+    if ($vram -lt 14) {
+        return @{ Mode = "context"; CtxHint = 8192; Tier = "12GB"; Why = "~${vram} GB VRAM: FA+Q8 recommended; context ~8k is a good default." }
+    }
+    if ($vram -lt 20) {
+        return @{ Mode = "context"; CtxHint = 16384; Tier = "16GB"; Why = "~${vram} GB VRAM: FA+Q8 unlocks long context (~16k) with ~50% KV savings." }
+    }
+    return @{ Mode = "speed"; CtxHint = 32768; Tier = "24GB+"; Why = "~${vram} GB VRAM: you can run FA-only (FP16 KV) for max quality/speed; use FA+Q8 if you need huge context." }
+}
+
+# MENU [7] — propose et applique le preset selon la VRAM
+function Invoke-SmartGpuPreset {
+    Write-Host "`n$($t.smart_title)" -ForegroundColor Cyan
+    $preset = Get-GpuSmartPreset
+    Write-Host "  Tier        : $($preset.Tier)" -ForegroundColor White
+    Write-Host "  Suggested   : Turbo $($preset.Mode) | ctx hint ~$($preset.CtxHint)" -ForegroundColor Green
+    Write-Host "  Why         : $($preset.Why)" -ForegroundColor DarkGray
+    Write-Host ""
+    $ok = Read-Host "Apply this preset now? (Y/N) [Y]"
+    if ($ok -and $ok -notmatch '^(o|oui|y|yes|)$') { return }
+    Save-TurboHistorySnapshot -Reason "before-smart-$($preset.Tier)"
+    Install-Optimizations -Mode $preset.Mode -SkipHistory
+    Write-Host "  Tip: when chatting/coding, keep num_ctx around $($preset.CtxHint) if you hit OOM." -ForegroundColor DarkGray
+}
+
+# MENU [8] — Coding/Cursor (FA+Q8 long prompt) vs Fast Chat (FA seul)
+function Invoke-WorkflowPreset {
+    Write-Host "`n$($t.workflow_title)" -ForegroundColor Cyan
+    Write-Host "  [1] Coding / Cursor / VS Code  → Turbo Context (FA + Q8)" -ForegroundColor White
+    Write-Host "      Long files & big prompts; saves ~50% context VRAM." -ForegroundColor DarkGray
+    Write-Host "  [2] Fast Chat                  → Turbo Pure Speed (FA only)" -ForegroundColor White
+    Write-Host "      Snappy short replies; FP16 KV for max quality/speed." -ForegroundColor DarkGray
+    Write-Host "  [0] Cancel" -ForegroundColor DarkGray
+    $pick = Read-Host "Choice"
+    switch ($pick) {
+        "1" {
+            Save-TurboHistorySnapshot -Reason "before-workflow-coding"
+            Write-Host "  Applying Coding / Cursor preset..." -ForegroundColor Magenta
+            Install-Optimizations -Mode "context" -SkipHistory
+        }
+        "2" {
+            Save-TurboHistorySnapshot -Reason "before-workflow-chat"
+            Write-Host "  Applying Fast Chat preset..." -ForegroundColor Magenta
+            Install-Optimizations -Mode "speed" -SkipHistory
+        }
+        default { return }
+    }
+}
+
+# Export TXT deja existant + JSON + CSV + carte Reddit (Desktop)
+function Export-BenchmarkArtifacts {
+    param(
+        [string]$Timestamp,
+        [string]$TestModel,
+        [int]$BenchCtx,
+        $Hw,
+        $ResStock,
+        $ResSpeed,
+        $ResContext,
+        [double]$GainSpeedE,
+        [double]$GainCtxE,
+        [string]$BestMode,
+        [string]$GainSpeedStr,
+        [string]$GainCtxStr,
+        [string]$TextReport
+    )
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    $stamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
+    $base = Join-Path $desktop "Ollama_Turbo_Bench_$stamp"
+
+    $txtPath = "$base.txt"
+    [System.IO.File]::WriteAllText($txtPath, $TextReport, [System.Text.Encoding]::UTF8)
+    Write-Host ($t.export_ok -f $txtPath) -ForegroundColor Green
+
+    $obj = [ordered]@{
+        tool        = "Ollama-Turbo-RTX"
+        timestamp   = $Timestamp
+        model       = $TestModel
+        context     = $BenchCtx
+        method      = "1 warmup + 3 timed passes; reported t/s = average"
+        hardware    = @{ gpu = $Hw.Gpu; cpu = $Hw.Cpu; ram = $Hw.Ram; windows = $Hw.Windows }
+        results     = @{
+            stock_tps           = $ResStock.Eval
+            turbo_speed_tps     = $ResSpeed.Eval
+            turbo_context_tps   = $ResContext.Eval
+            gain_speed_pct      = $GainSpeedE
+            gain_context_pct    = $GainCtxE
+            winner              = $BestMode
+        }
+    }
+    $jsonPath = "$base.json"
+    ($obj | ConvertTo-Json -Depth 6) | Set-Content -Path $jsonPath -Encoding UTF8
+    Write-Host ($t.export_ok -f $jsonPath) -ForegroundColor Green
+
+    $csvPath = "$base.csv"
+    @(
+        "config,tokens_per_sec,gain_vs_stock_pct,kv_vram"
+        "stock,$($ResStock.Eval),0,100%"
+        "turbo_speed_fa,$($ResSpeed.Eval),$GainSpeedE,100%"
+        "turbo_context_fa_q8,$($ResContext.Eval),$GainCtxE,~50%"
+    ) | Set-Content -Path $csvPath -Encoding UTF8
+    Write-Host ($t.export_ok -f $csvPath) -ForegroundColor Green
+
+    $card = @"
+Ollama-Turbo-RTX bench
+GPU: $($Hw.Gpu) | $($Hw.Cpu) | RAM $($Hw.Ram)
+Model: $TestModel | ctx $BenchCtx | 3-pass avg
+Stock: $($ResStock.Eval) t/s
+Turbo Speed (FA): $($ResSpeed.Eval) t/s ($GainSpeedStr)
+Turbo Context (FA+Q8): $($ResContext.Eval) t/s ($GainCtxStr) | ~-50% KV VRAM
+Winner: $BestMode
+https://github.com/Masterm3u/Ollama-Turbo-RTX
+"@
+    $cardPath = "$base-reddit.txt"
+    [System.IO.File]::WriteAllText($cardPath, $card, [System.Text.Encoding]::UTF8)
+    Write-Host ($t.export_ok -f $cardPath) -ForegroundColor Green
+    Write-Host "`n$($t.reddit_card)" -ForegroundColor Yellow
+    Write-Host $card -ForegroundColor White
+    try { Set-Clipboard -Value $card } catch {}
+}
+
 function Show-Status {
     Write-Host "`n========================================================" -ForegroundColor DarkGray
     Write-Host $t.status_title -ForegroundColor Cyan
@@ -733,6 +1026,10 @@ function Show-Menu {
 
     Write-Host $t.opt_4
     Write-Host $t.opt_5
+    Write-Host $t.opt_6
+    Write-Host $t.opt_7
+    Write-Host $t.opt_8
+    Write-Host $t.opt_9
     Write-Host $t.opt_q
     Write-Host ""
     Write-Host $t.support_tip -ForegroundColor DarkYellow
@@ -744,10 +1041,14 @@ function Show-Menu {
 function Install-Optimizations {
     param(
         [ValidateSet("context", "speed")]
-        [string]$Mode = "context"
+        [string]$Mode = "context",
+        [switch]$SkipHistory
     )
 
     Check-Admin
+    if (-not $SkipHistory) {
+        Save-TurboHistorySnapshot -Reason "before-install-$Mode"
+    }
     Write-Host "`n$($t.gpu_detect)" -ForegroundColor Cyan
     # Verification lecture seule : refuse d'optimiser sans GPU NVIDIA visible
     $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" -and $_.Name -notlike "*Audio*" } | Select-Object -First 1
@@ -799,6 +1100,7 @@ function Install-Optimizations {
 # MENU [3] — efface tous les flags Turbo (retour Ollama stock) puis redemarre
 function Restore-Defaults {
     Check-Admin
+    Save-TurboHistorySnapshot -Reason "before-rollback-stock"
     Write-Host "`n$($t.revert_title)" -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention $null -KvCacheType $null -HostBind $null
 
@@ -1378,12 +1680,7 @@ function Run-Benchmark {
     Write-Host $sepLine -ForegroundColor DarkGray
     Write-Host ""
 
-    $saveChoice = Read-HostWithTimeout -Prompt $t.bench_save_prompt -TimeoutSec 20 -DefaultValue "N"
-    if ($saveChoice -match '^(o|oui|y|yes|s|si|j|ja)') {
-        $desktopPath = [Environment]::GetFolderPath("Desktop")
-        $filePath = Join-Path $desktopPath "Ollama_Turbo_Comparatif.txt"
-
-        $report = @"
+    $report = @"
 ================================================================================
  RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO
  Date     : $timestamp
@@ -1408,9 +1705,17 @@ function Run-Benchmark {
  -> Meilleure configuration detectee : $bestMode
 ================================================================================
 "@
-        [System.IO.File]::WriteAllText($filePath, $report, [System.Text.Encoding]::UTF8)
-        Write-Host "`n[OK] Rapport sauvegarde : $filePath" -ForegroundColor Green
-        Start-Process notepad.exe -ArgumentList "`"$filePath`""
+
+    $saveChoice = Read-HostWithTimeout -Prompt $t.bench_save_prompt -TimeoutSec 20 -DefaultValue "Y"
+    if ($saveChoice -match '^(o|oui|y|yes|s|si|j|ja)?$') {
+        Export-BenchmarkArtifacts `
+            -Timestamp $timestamp -TestModel $testModel -BenchCtx $benchCtx -Hw $hw `
+            -ResStock $resStock -ResSpeed $resSpeed -ResContext $resContext `
+            -GainSpeedE $gainSpeedE -GainCtxE $gainCtxE -BestMode $bestMode `
+            -GainSpeedStr $gainSpeedStr -GainCtxStr $gainCtxStr -TextReport $report
+        $latestTxt = Get-ChildItem ([Environment]::GetFolderPath("Desktop")) -Filter "Ollama_Turbo_Bench_*.txt" |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($latestTxt) { Start-Process notepad.exe -ArgumentList "`"$($latestTxt.FullName)`"" }
         Start-Sleep -Seconds 1
     }
 }
@@ -1479,7 +1784,10 @@ function Select-Language {
         "3" { $script:CurrentLang = "es" }
         "4" { $script:CurrentLang = "de" }
     }
-    $script:t = $i18n[$script:CurrentLang]
+    $script:t = @{}; foreach ($k in $i18n.en.Keys) { $script:t[$k] = $i18n.en[$k] }
+    if ($script:CurrentLang -ne "en") {
+        foreach ($k in $i18n[$script:CurrentLang].Keys) { $script:t[$k] = $i18n[$script:CurrentLang][$k] }
+    }
 }
 
 # Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / fenetre bench
@@ -1488,6 +1796,8 @@ if ($Action -eq "install-speed") { Install-Optimizations -Mode "speed"; Exit }
 if ($Action -eq "restore") { Restore-Defaults; Exit }
 if ($Action -eq "status")  { Show-Status; Exit }
 if ($Action -eq "bench")   { Run-Benchmark; Stop-BenchmarkHost }
+if ($Action -eq "health")  { Invoke-HealthCheck; Exit }
+if ($Action -eq "smart")   { Invoke-SmartGpuPreset; Exit }
 
 # Boucle menu interactive (affichage + choix 1-5 / Q) — aucune action systeme tant que l'usager n'a pas choisi
 do {
@@ -1516,6 +1826,10 @@ do {
         "3" { Restore-Defaults; Pause }
         "4" { Start-BenchmarkWindow; Pause }
         "5" { Select-Language }
+        "6" { Invoke-HealthCheck; Pause }
+        "7" { Invoke-SmartGpuPreset; Pause }
+        "8" { Invoke-WorkflowPreset; Pause }
+        "9" { Invoke-HistoryRestore; Pause }
         "Q" { Exit }
         "q" { Exit }
         default { Write-Warning "Invalid option." }

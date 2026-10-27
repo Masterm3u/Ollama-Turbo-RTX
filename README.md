@@ -109,7 +109,8 @@ Raw report: [`benchmarks/RTX5080_qwen-64k_2026-10-26.txt`](benchmarks/RTX5080_qw
 - **Auto-detects** the Windows OS language on launch
 - **Full multilingual UI** (4 languages): English (worldwide default), French, Spanish, and German
 - **Switch language anytime** from the menu, or via CLI (`-Lang en`, `-Lang fr`, `-Lang es`, `-Lang de`)
-- **All tools in one place**: optimization (Flash Attention + KV Q8), rollback, detailed status, and live benchmark
+- **All tools in one place**: optimization (Flash Attention + KV Q8), rollback, live benchmark, **health check**, **smart GPU preset**, **Coding/Chat workflows**, **undo history**
+- **Bench exports**: TXT + JSON + CSV + Reddit share card (auto on Desktop)
 
 ---
 
