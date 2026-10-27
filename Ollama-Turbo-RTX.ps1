@@ -764,7 +764,7 @@ function ConvertTo-OllamaVersionObject {
     return $null
 }
 
-# Interroge GitHub Releases (ollama/ollama) pour la derniere version publique
+# Interroge GitHub Releases (ollama/ollama) pour la derniere version publique + URL OllamaSetup.exe
 function Get-LatestOllamaRelease {
     try {
         $headers = @{
@@ -773,16 +773,81 @@ function Get-LatestOllamaRelease {
         }
         $r = Invoke-RestMethod -Uri "https://api.github.com/repos/ollama/ollama/releases/latest" -Headers $headers -TimeoutSec 8
         $tag = [string]$r.tag_name
+        $setup = ($r.assets | Where-Object { $_.name -eq "OllamaSetup.exe" } | Select-Object -First 1)
         return [pscustomobject]@{
             Tag         = $tag
             Version     = (ConvertTo-OllamaVersionObject $tag)
             PublishedAt = $r.published_at
             Url         = $r.html_url
+            SetupUrl    = if ($setup) { [string]$setup.browser_download_url } else { "https://ollama.com/download/OllamaSetup.exe" }
             Ok          = $true
         }
     } catch {
         return [pscustomobject]@{ Ok = $false; Error = $_.Exception.Message }
     }
+}
+
+# Telecharge OllamaSetup.exe (release GitHub) et lance l'installateur Windows
+function Update-OllamaFromRelease {
+    param($LatestRelease)
+
+    $setupUrl = if ($LatestRelease -and $LatestRelease.SetupUrl) {
+        $LatestRelease.SetupUrl
+    } else {
+        "https://ollama.com/download/OllamaSetup.exe"
+    }
+    $tag = if ($LatestRelease -and $LatestRelease.Tag) { $LatestRelease.Tag } else { "latest" }
+
+    Write-Host "`n  [*] Preparing Ollama update to $tag ..." -ForegroundColor Cyan
+    Write-Host "  [*] Stopping local Ollama processes (needed for installer)..." -ForegroundColor DarkGray
+    Stop-OllamaSilent | Out-Null
+
+    $dest = Join-Path $env:TEMP "OllamaSetup-$tag.exe"
+    try {
+        Write-Host "  [*] Downloading: $setupUrl" -ForegroundColor DarkGray
+        Write-Host "      -> $dest" -ForegroundColor DarkGray
+        Invoke-WebRequest -Uri $setupUrl -OutFile $dest -UseBasicParsing -TimeoutSec 600
+    } catch {
+        Write-Host "  [!!] Download failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "       Manual: https://ollama.com/download" -ForegroundColor Yellow
+        return $false
+    }
+
+    if (-not (Test-Path $dest) -or ((Get-Item $dest).Length -lt 1MB)) {
+        Write-Host "  [!!] Installer missing or too small — abort." -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "  [*] Launching OllamaSetup.exe (accept UAC if prompted)..." -ForegroundColor Yellow
+    try {
+        $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
+        Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
+    } catch {
+        Write-Host "  [!!] Could not start installer: $($_.Exception.Message)" -ForegroundColor Red
+        return $false
+    }
+
+    Start-Sleep -Seconds 2
+    $verLine = ""
+    try {
+        $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
+        if ($ollamaCmd) {
+            $verLine = (& ollama --version 2>$null | Out-String).Trim()
+        }
+    } catch {}
+    $now = ConvertTo-OllamaVersionObject $verLine
+    if ($now -and $LatestRelease.Version -and $now -ge $LatestRelease.Version) {
+        Write-Host ("  [OK] Ollama updated successfully -> {0}" -f $verLine) -ForegroundColor Green
+        Write-Host "  [*] Restarting Ollama..." -ForegroundColor DarkGray
+        Start-OllamaSilent | Out-Null
+        Wait-OllamaReady | Out-Null
+        return $true
+    }
+
+    Write-Host "  [!!] Version after install: $(if ($verLine) { $verLine } else { 'unknown' })" -ForegroundColor Yellow
+    Write-Host "       If the wizard is still open, finish it then re-run Health Check [6]." -ForegroundColor Yellow
+    Start-OllamaSilent | Out-Null
+    return $false
 }
 
 # MENU [6] — diagnostic lecture seule : Ollama, nvidia-smi, API, modele charge + maj version
@@ -811,6 +876,13 @@ function Invoke-HealthCheck {
                 Write-Host ("       latest    : {0}  (published {1})" -f $latest.Tag, $latest.PublishedAt) -ForegroundColor Yellow
                 Write-Host "       download  : https://ollama.com/download" -ForegroundColor Cyan
                 Write-Host ("       release   : {0}" -f $latest.Url) -ForegroundColor DarkGray
+                Write-Host ""
+                $upd = Read-Host "  Update Ollama to $($latest.Tag) now? (Y/N) [Y]"
+                if (-not $upd -or $upd -match '^(o|oui|y|yes)$') {
+                    [void](Update-OllamaFromRelease -LatestRelease $latest)
+                } else {
+                    Write-Host "  [--] Update skipped. You can retry anytime from menu [6]." -ForegroundColor DarkGray
+                }
             }
         } elseif ($latest.Ok -and $latest.Tag) {
             Write-Host ("  [--] Latest on GitHub : {0} (could not parse local version)" -f $latest.Tag) -ForegroundColor DarkGray
