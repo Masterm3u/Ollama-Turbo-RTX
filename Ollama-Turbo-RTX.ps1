@@ -1110,7 +1110,33 @@ function Invoke-HealthCheck {
                         if ($nv.DetailsUrl) {
                             Write-Host ("       details   : {0}" -f $nv.DetailsUrl) -ForegroundColor DarkGray
                         }
-                        $pendingNvidia = $nv
+                        # Prompt IMMEDIAT (ne pas attendre la fin du rapport — plus visible)
+                        Write-Host ""
+                        Write-Host "  [Y] Oui — ouvrir le lien web dans le navigateur (aucun DL PowerShell)" -ForegroundColor Green
+                        Write-Host "  [N] Non — ignorer et continuer le diagnostic" -ForegroundColor DarkGray
+                        try {
+                            $nvChoiceNow = [string](Read-Host "  Ouvrir le telechargement NVIDIA maintenant? (Y/N)").Trim()
+                        } catch {
+                            $nvChoiceNow = "N"
+                        }
+                        if ($nvChoiceNow -match '^(o|oui|y|yes)$') {
+                            $openUrlNow = if ($nv.DownloadUrl) { $nv.DownloadUrl } else { $nv.DetailsUrl }
+                            if ($openUrlNow) {
+                                Write-Host "  [*] Ouverture du navigateur..." -ForegroundColor Cyan
+                                try {
+                                    Start-Process $openUrlNow
+                                    Write-Host "  [OK] Lien ouvert — telecharge depuis le navigateur." -ForegroundColor Green
+                                } catch {
+                                    Write-Host "  [!!] Navigateur: $($_.Exception.Message)" -ForegroundColor Red
+                                    Write-Host "      $openUrlNow" -ForegroundColor Yellow
+                                }
+                            }
+                        } else {
+                            Write-Host "  [--] Driver ignore — diagnostic continue." -ForegroundColor DarkGray
+                        }
+                        Write-Host ""
+                        # Ne pas re-proposer a la fin
+                        $pendingNvidia = $null
                     } else {
                         Write-Host ("  [OK] NVIDIA driver UP TO DATE  (installed {0} = latest {1})" -f $nv.Installed, $nv.Latest) -ForegroundColor Green
                     }
