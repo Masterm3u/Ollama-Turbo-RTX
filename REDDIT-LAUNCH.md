@@ -63,8 +63,10 @@ Methodology (built into the script): for each mode → 1 warm-up (discarded) + *
 
 ### What it does
 - Turbo Context (FA + Q8) / Turbo Pure Speed (FA) / Rollback
-- Live benchmark: Stock | Speed | Context
-- EN/FR/ES/DE + OS language auto-detect
+- Live bench + multi-model (7B/14B/32B) + JSON/CSV/Reddit card export
+- Health check (Ollama + NVIDIA driver links) / VRAM presets / watchdog after reboot
+- Quiet/CI mode, AMD/Intel clear “not supported” + docs links
+- EN/FR/ES/DE + OS language auto-detect · menu [S] = star + coffee
 
 ### Install (Admin PowerShell, one line)
 
@@ -120,10 +122,12 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
 ```
 Quick FAQ:
 - Needs Admin (Machine env vars)
-- RTX 30/40/50 recommended; use Rollback if anything feels off
-- Menu [4] = live bench — please reply with GPU + model + table
+- RTX 30/40/50 required for Turbo; AMD/Intel get a clear “not supported” + Ollama GPU docs links
+- Menu [4] = live bench (warns if 15+ min on fat cards) · [M] = multi-model · exports JSON + Reddit card
+- [6] health · [7] VRAM preset · [W] watchdog after reboot · [S] star/coffee
+- CLI: -Action install-context|bench|health|smart -Quiet -Out report.json
 - Full raw report: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/benchmarks/RTX5080_qwen-64k_2026-10-26.txt
-- Stars help others find it: https://github.com/Masterm3u/Ollama-Turbo-RTX
-- Optional support: https://buymeacoffee.com/masterm3u
+- Docs: https://github.com/Masterm3u/Ollama-Turbo-RTX#interactive-menu
+- Stars: https://github.com/Masterm3u/Ollama-Turbo-RTX · coffee: https://buymeacoffee.com/masterm3u
 ```
 

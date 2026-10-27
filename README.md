@@ -6,7 +6,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20after%20update-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20latest%20hash-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/home/upload)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
 
@@ -53,13 +53,14 @@ This project is **open-source PowerShell only** — no `.exe`, no packed binary,
 |-------|-----|
 | **Source** | [`Ollama-Turbo-RTX.ps1`](Ollama-Turbo-RTX.ps1) — plain text |
 | **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
-| **VirusTotal** | Re-upload latest `.ps1` after each change — hash `7a4fb527…` → [VirusTotal lookup](https://www.virustotal.com/gui/file/7a4fb527a003fcb637a68c5f9b581950a2c4c85b6ceae6adb895169fe03d8746) (previous build was **0/60 clean**) |
+| **VirusTotal** | Re-upload the file you run after each update — compare SHA-256 with [`checksums.sha256`](checksums.sha256) |
 | **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
 | **Code signing** | Not required — trust = open source + checksums + VirusTotal. Optional later: [`SIGNING.md`](SIGNING.md) |
 
 ```powershell
 # Verify integrity after download
 Get-FileHash "$env:TEMP\Ollama-Turbo-RTX.ps1" -Algorithm SHA256
+# Compare with: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/checksums.sha256
 ```
 
 > Honesty note: nobody can prove “100% forever virus-free” for every future commit. Trust comes from **readable source + checksums + a clean VirusTotal report on the file you actually run**. After each update, re-check the hash and re-scan.
@@ -100,67 +101,156 @@ For **each** mode (Stock → Turbo Speed → Turbo Context):
 
 Raw report: [`benchmarks/RTX5080_qwen-64k_2026-10-26.txt`](benchmarks/RTX5080_qwen-64k_2026-10-26.txt)
 
-> Results vary by GPU / model / drivers. Run **[4]** yourself and compare — that’s the point.
+> Results vary by GPU / model / drivers. Run **[4]** or **[M]** yourself and compare — that’s the point. On RTX 5080, a full bench often takes **8–15+ minutes** (multi-model **15–30+**); the script warns and shows an elapsed chrono.
 
 ---
 
 ### ✨ Features
 
-- **Auto-detects** the Windows OS language on launch
-- **Full multilingual UI** (4 languages): English (worldwide default), French, Spanish, and German
-- **Switch language anytime** from the menu, or via CLI (`-Lang en`, `-Lang fr`, `-Lang es`, `-Lang de`)
-- **All tools in one place**: optimization (Flash Attention + KV Q8), rollback, live benchmark, **health check**, **smart GPU preset**, **Coding/Chat workflows**, **undo history**
-- **Bench exports**: TXT + JSON + CSV + Reddit share card (auto on Desktop)
+- **Multilingual UI** EN / FR / ES / DE (OS auto-detect + menu **[5]** / `-Lang`)
+- **Turbo Context (FA+Q8)** & **Turbo Pure Speed (FA)** + one-key **Rollback**
+- **Live benchmark** Stock vs FA vs FA+Q8 (3-pass avg) + **multi-model** 7B/14B/32B
+- **Exports**: Desktop TXT + **JSON** + CSV + **Reddit card** (clipboard + `*-reddit.txt`)
+- **Health check**: Ollama version vs GitHub, NVIDIA driver vs Game Ready (browser link only), API, FA/KV
+- **Smart VRAM presets** (8 / 12 / 16 / 24GB+ tiers) + Coding vs Fast Chat workflows
+- **VRAM context estimate** FP16 vs Q8 tokens max for your card
+- **Watchdog** after reboot (scheduled task re-applies Machine flags if lost)
+- **Undo history** snapshots of FA/KV before changes
+- **Quiet / Minimal theme** for CI (`-Quiet`, `-Theme Minimal`, menu **[T]**)
+- **AMD / Intel**: clear **not supported** message + docs links (no silent NVIDIA-only abort)
+- **Support links** in-menu (**[S]** → GitHub star + Buy Me a Coffee)
 
 ---
 
-### 🎛️ Modes
+### 🎛️ Interactive menu
 
-| Mode | What it does |
-|------|----------------|
-| **Turbo Context (FA + Q8)** | Flash Attention + KV `q8_0` — ~50% less VRAM for context |
-| **Turbo Pure Speed (FA only)** | Flash Attention, KV FP16 — max decode speed/quality |
-| **Rollback** | Restore stock Ollama env |
-| **Benchmark** | Stock vs Speed vs Context in a separate admin window |
+| Key | Action |
+|-----|--------|
+| **[1]** | Turbo Context — Flash Attention + KV `q8_0` (~50% context VRAM) |
+| **[2]** | Turbo Pure Speed — Flash Attention only (KV FP16) |
+| **[3]** | Rollback to stock Ollama env |
+| **[4]** | Live benchmark (1 model) — Admin window; duration warning + chrono |
+| **[5]** | Change language |
+| **[6]** | System health check (Ollama / NVIDIA driver / API / FA·KV) |
+| **[7]** | Smart GPU preset from VRAM table |
+| **[8]** | Workflow: Coding/Cursor (FA+Q8) or Fast Chat (FA) |
+| **[9]** | Undo / restore history snapshot |
+| **[A]** | VRAM context estimate (FP16 vs Q8) |
+| **[M]** | Multi-model benchmark (7B / 14B / 32B chain) |
+| **[W]** | Watchdog after reboot (install / check / remove) + notify prefs |
+| **[S]** | Open GitHub star and/or Buy Me a Coffee in the browser |
+| **[T]** | Theme Full ↔ Minimal |
+| **[Q]** | Quit |
+
+#### VRAM preset tiers **[7]**
+
+| Tier | Mode | `num_ctx` hint |
+|------|------|----------------|
+| ~8 GB | Context FA+Q8 | ~4096 |
+| ~12 GB | Context FA+Q8 | ~8192 |
+| ~16 GB (e.g. RTX 5080) | Context FA+Q8 | ~16384 |
+| ~24 GB+ | Speed FA | ~32768 |
 
 ---
 
 ### ✅ Prerequisites
 
 - Windows 10 / 11
-- NVIDIA RTX 30 / 40 / 50 series
+- **NVIDIA RTX 30 / 40 / 50** (required for Turbo flags). AMD / Intel: Ollama may still run — this tool explains non-support and links to [Ollama GPU docs](https://github.com/ollama/ollama/blob/main/docs/gpu.md)
 - [Ollama](https://ollama.com/download) installed
 - Run as **Administrator** (Machine environment variables)
 
 ---
 
-### 📦 Local run
+### 📦 Local run & CLI
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Lang fr
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Theme Minimal
 ```
 
-Force a language:
+#### Parameters
+
+| Param | Description |
+|-------|-------------|
+| `-Action` | Non-interactive action (see below) |
+| `-Lang` | `en` \| `fr` \| `es` \| `de` |
+| `-Model` | Bench model name (e.g. `llama3.1:8b`) |
+| `-Models` | Multi-bench list: `7b,14b,32b` or exact names |
+| `-Ctx` | Bench `num_ctx` (e.g. `16384`) |
+| `-Out` | Report path (`.json` or `.txt`) |
+| `-Notify` | Windows toast on install / bench / watchdog |
+| `-Quiet` | CI-friendly output (`OK` / `WARN` / `ERROR`), no banner/Pause |
+| `-Theme` | `Full` \| `Minimal` |
+
+#### `-Action` values
+
+| Action | What it does |
+|--------|----------------|
+| `install-context` / `install` | Apply Turbo Context (FA+Q8) |
+| `install-speed` | Apply Turbo Pure Speed (FA) |
+| `restore` | Stock rollback |
+| `status` | Print current mode / FA / KV / GPU |
+| `gpu-check` | NVIDIA vs AMD/Intel; exit `2` if unsupported |
+| `bench` | Single-model Stock/FA/FA+Q8 bench |
+| `bench-multi` | Chain 7B/14B/32B (or `-Models`) |
+| `health` | Full health check; optional `-Out health.json` |
+| `smart` | Apply VRAM-based preset |
+| `vram` | Print FP16 vs Q8 context estimates |
+| `watchdog` | Repair Machine flags from saved state |
+| `watchdog-install` | Register logon scheduled task |
+| `watchdog-remove` | Unregister watchdog task |
+
+#### CLI examples
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Lang fr
+# Optimize + toast
+.\Ollama-Turbo-RTX.ps1 -Action install-context -Notify
+
+# CI / automation
+.\Ollama-Turbo-RTX.ps1 -Action install-context -Quiet
+.\Ollama-Turbo-RTX.ps1 -Action status -Quiet
+.\Ollama-Turbo-RTX.ps1 -Action health -Quiet -Out .\health.json
+.\Ollama-Turbo-RTX.ps1 -Action gpu-check -Quiet
+
+# Benchmark → JSON on Desktop path of your choice
+.\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 16384 -Out .\report.json
+.\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Out .\multi.json
+
+# VRAM estimate / smart preset / watchdog
+.\Ollama-Turbo-RTX.ps1 -Action vram
+.\Ollama-Turbo-RTX.ps1 -Action smart -Quiet
+.\Ollama-Turbo-RTX.ps1 -Action watchdog-install
 ```
+
+Exit codes: `0` success · `2` unsupported GPU (AMD/Intel/none).
+
+---
+
+### 🩺 Health check **[6]** highlights
+
+- Ollama CLI version vs latest GitHub release → optional install (`curl.exe`, not slow `Invoke-WebRequest`)
+- NVIDIA Game Ready: compare driver → **Y** opens browser download (no PS download of the .exe)
+- API `127.0.0.1:11434`, loaded models, Machine `FA` / `KV`
+- Quiet: one-line summary; `-Out health.json` for machines
 
 ---
 
 ### 📣 Launch kit
 
-Ready-to-post Reddit titles + bodies (r/LocalLLaMA, r/ollama, r/PowerShell, r/nvidia): see **[REDDIT-LAUNCH.md](REDDIT-LAUNCH.md)**.
+Ready-to-post Reddit titles + bodies: **[REDDIT-LAUNCH.md](REDDIT-LAUNCH.md)**.  
+After a bench, the script also copies a paste-ready card and writes `Ollama_Turbo_Bench_*-reddit.txt` on the Desktop.
 
-Demo GIF instructions: **[assets/README.md](assets/README.md)**.
+Demo GIF tips: **[assets/README.md](assets/README.md)**.
 
 ---
 
 ### ⭐ Support the project
 
-If this saved you time or VRAM:
+Menu **[S]** opens the links in your browser, or:
 
-1. **Star the repo** → [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX) (helps others find it)
+1. **Star the repo** → [github.com/Masterm3u/Ollama-Turbo-RTX](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 2. **Buy me a coffee** → [buymeacoffee.com/masterm3u](https://buymeacoffee.com/masterm3u)
 
 <a href="https://buymeacoffee.com/masterm3u" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="40"></a>

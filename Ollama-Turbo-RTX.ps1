@@ -6,22 +6,26 @@
 #   2) Redemarrage des process locaux ollama / llama-server (libere la VRAM)
 #   3) Appels API locaux uniquement : http://127.0.0.1:11434 (benchmark)
 #   4) Watchdog optionnel (tache planifiee logon) pour reappliquer les flags apres reboot
-# CLI exemples :
+# Menu : [1] Context [2] Speed [3] Rollback [4] Bench [5] Lang [6] Health [7] Smart VRAM
+#         [8] Workflow [9] Undo [A] VRAM est. [M] Multi-bench [W] Watchdog [S] Support [T] Theme [Q]
+# CLI exemples (doc complete : README.md) :
 #   .\Ollama-Turbo-RTX.ps1 -Action install-context -Notify
 #   .\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 16384 -Out report.json
 #   .\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Out multi.json
+#   .\Ollama-Turbo-RTX.ps1 -Action health -Quiet -Out health.json
+#   .\Ollama-Turbo-RTX.ps1 -Action smart -Quiet
 #   .\Ollama-Turbo-RTX.ps1 -Action vram
+#   .\Ollama-Turbo-RTX.ps1 -Action gpu-check -Quiet
 #   .\Ollama-Turbo-RTX.ps1 -Action watchdog-install
-#   .\Ollama-Turbo-RTX.ps1 -Action install-context -Quiet   # CI / moins de texte
 #   .\Ollama-Turbo-RTX.ps1 -Theme Minimal
 # =============================================================================
 param (
-    [string]$Action = "",   # install-context | install-speed | restore | status | bench | bench-multi | health | vram | watchdog | watchdog-install | watchdog-remove
+    [string]$Action = "",   # install-context | install-speed | restore | status | gpu-check | bench | bench-multi | health | smart | vram | watchdog | watchdog-install | watchdog-remove
     [string]$Lang = "",     # en | fr | es | de — sinon auto-detect OS
     [string]$Model = "",    # bench CLI : modele unique (ex. llama3.1:8b)
     [string]$Models = "",   # bench-multi CLI : "7b,14b,32b" ou noms separes par virgule
     [int]$Ctx = 0,          # bench CLI : num_ctx (ex. 16384)
-    [string]$Out = "",      # bench CLI : chemin rapport .json / .txt
+    [string]$Out = "",      # bench/health CLI : chemin rapport .json / .txt
     [switch]$Notify,        # toasts Windows (install / bench / watchdog)
     [switch]$Quiet,         # sortie minimale, CI-friendly (pas de banner / Pause)
     [ValidateSet("", "Full", "Minimal")]
