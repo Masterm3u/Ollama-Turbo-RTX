@@ -779,7 +779,9 @@ function Get-LatestOllamaRelease {
             Version     = (ConvertTo-OllamaVersionObject $tag)
             PublishedAt = $r.published_at
             Url         = $r.html_url
-            SetupUrl    = if ($setup) { [string]$setup.browser_download_url } else { "https://ollama.com/download/OllamaSetup.exe" }
+            # CDN officiel pour le DL ; URL GitHub garde pour fallback
+            SetupUrl    = "https://ollama.com/download/OllamaSetup.exe"
+            GithubSetup = if ($setup) { [string]$setup.browser_download_url } else { $null }
             Ok          = $true
         }
     } catch {
@@ -787,14 +789,18 @@ function Get-LatestOllamaRelease {
     }
 }
 
-# Telecharge OllamaSetup.exe (release GitHub) et lance l'installateur Windows
+# Telecharge OllamaSetup.exe via CDN ollama.com (plus rapide que GitHub), fallback release GitHub
 function Update-OllamaFromRelease {
     param($LatestRelease)
 
-    $setupUrl = if ($LatestRelease -and $LatestRelease.SetupUrl) {
-        $LatestRelease.SetupUrl
-    } else {
-        "https://ollama.com/download/OllamaSetup.exe"
+    $cdnUrl = "https://ollama.com/download/OllamaSetup.exe"
+    $githubUrl = $null
+    if ($LatestRelease) {
+        if ($LatestRelease.PSObject.Properties.Name -contains 'GithubSetup' -and $LatestRelease.GithubSetup) {
+            $githubUrl = [string]$LatestRelease.GithubSetup
+        } elseif ($LatestRelease.SetupUrl -and $LatestRelease.SetupUrl -notlike '*ollama.com/download*') {
+            $githubUrl = [string]$LatestRelease.SetupUrl
+        }
     }
     $tag = if ($LatestRelease -and $LatestRelease.Tag) { $LatestRelease.Tag } else { "latest" }
 
@@ -803,12 +809,29 @@ function Update-OllamaFromRelease {
     Stop-OllamaSilent | Out-Null
 
     $dest = Join-Path $env:TEMP "OllamaSetup-$tag.exe"
-    try {
-        Write-Host "  [*] Downloading: $setupUrl" -ForegroundColor DarkGray
-        Write-Host "      -> $dest" -ForegroundColor DarkGray
-        Invoke-WebRequest -Uri $setupUrl -OutFile $dest -UseBasicParsing -TimeoutSec 600
-    } catch {
-        Write-Host "  [!!] Download failed: $($_.Exception.Message)" -ForegroundColor Red
+    # Preferer le CDN officiel (souvent plus rapide) ; GitHub en secours
+    $urls = @($cdnUrl)
+    if ($githubUrl -and $githubUrl -ne $cdnUrl) { $urls += $githubUrl }
+
+    $downloaded = $false
+    foreach ($setupUrl in $urls) {
+        try {
+            Write-Host "  [*] Downloading (~500 MB) from: $setupUrl" -ForegroundColor DarkGray
+            Write-Host "      -> $dest" -ForegroundColor DarkGray
+            Invoke-WebRequest -Uri $setupUrl -OutFile $dest -UseBasicParsing -TimeoutSec 600
+            if ((Test-Path $dest) -and ((Get-Item $dest).Length -ge 1MB)) {
+                $downloaded = $true
+                break
+            }
+        } catch {
+            Write-Host "  [!!] Failed ($setupUrl): $($_.Exception.Message)" -ForegroundColor Yellow
+            if ($setupUrl -eq $cdnUrl -and $githubUrl) {
+                Write-Host "  [*] Retry via GitHub releases..." -ForegroundColor DarkGray
+            }
+        }
+    }
+    if (-not $downloaded) {
+        Write-Host "  [!!] Download failed from all mirrors." -ForegroundColor Red
         Write-Host "       Manual: https://ollama.com/download" -ForegroundColor Yellow
         return $false
     }
