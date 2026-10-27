@@ -850,11 +850,12 @@ function Update-OllamaFromRelease {
     return $false
 }
 
-# MENU [6] — diagnostic lecture seule : Ollama, nvidia-smi, API, modele charge + maj version
+# MENU [6] — diagnostic + offre de mise a jour Ollama EN FIN de rapport (prompt visible)
 function Invoke-HealthCheck {
     Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
     Write-Host ("=" * 60) -ForegroundColor DarkGray
 
+    $pendingUpdate = $null
     $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
     $localVerObj = $null
     if ($ollamaCmd) {
@@ -864,7 +865,6 @@ function Invoke-HealthCheck {
         if ($ver) { Write-Host "       version   : $ver" -ForegroundColor DarkGray }
         $localVerObj = ConvertTo-OllamaVersionObject $ver
 
-        # Comparaison avec la derniere release GitHub (https://github.com/ollama/ollama/releases)
         Write-Host "  [*] Checking latest Ollama release on GitHub..." -ForegroundColor DarkGray
         $latest = Get-LatestOllamaRelease
         if ($latest.Ok -and $latest.Version -and $localVerObj) {
@@ -876,13 +876,7 @@ function Invoke-HealthCheck {
                 Write-Host ("       latest    : {0}  (published {1})" -f $latest.Tag, $latest.PublishedAt) -ForegroundColor Yellow
                 Write-Host "       download  : https://ollama.com/download" -ForegroundColor Cyan
                 Write-Host ("       release   : {0}" -f $latest.Url) -ForegroundColor DarkGray
-                Write-Host ""
-                $upd = Read-Host "  Update Ollama to $($latest.Tag) now? (Y/N) [Y]"
-                if (-not $upd -or $upd -match '^(o|oui|y|yes)$') {
-                    [void](Update-OllamaFromRelease -LatestRelease $latest)
-                } else {
-                    Write-Host "  [--] Update skipped. You can retry anytime from menu [6]." -ForegroundColor DarkGray
-                }
+                $pendingUpdate = $latest
             }
         } elseif ($latest.Ok -and $latest.Tag) {
             Write-Host ("  [--] Latest on GitHub : {0} (could not parse local version)" -f $latest.Tag) -ForegroundColor DarkGray
@@ -937,6 +931,30 @@ function Invoke-HealthCheck {
     $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
     Write-Host ("  [--] Machine FA={0}  KV={1}" -f $(if ($fa) { $fa } else { "(unset)" }), $(if ($kv) { $kv } else { "(unset)" })) -ForegroundColor DarkGray
     Write-Host ("=" * 60) -ForegroundColor DarkGray
+
+    # Demande de mise a jour APRES le rapport complet (sinon le prompt passe inapercu)
+    if ($pendingUpdate) {
+        Write-Host ""
+        Write-Host "  ======================================================" -ForegroundColor Yellow
+        Write-Host "   MISE A JOUR OLLAMA DISPONIBLE / UPDATE AVAILABLE" -ForegroundColor Yellow
+        Write-Host ("   Installe / Installed : {0}" -f $localVerObj) -ForegroundColor White
+        Write-Host ("   Derniere / Latest    : {0}" -f $pendingUpdate.Tag) -ForegroundColor White
+        Write-Host "  ======================================================" -ForegroundColor Yellow
+        Write-Host "  [Y] Oui / Yes  — telecharger OllamaSetup.exe et installer" -ForegroundColor Green
+        Write-Host "  [N] Non / No   — ignorer pour le moment" -ForegroundColor DarkGray
+        Write-Host ""
+        try {
+            $upd = [string](Read-Host "  Votre choix / Your choice (Y/N)").Trim()
+        } catch {
+            $upd = "N"
+        }
+        if ([string]::IsNullOrWhiteSpace($upd) -or $upd -match '^(o|oui|y|yes)$') {
+            Write-Host "  [*] Lancement de la mise a jour..." -ForegroundColor Cyan
+            [void](Update-OllamaFromRelease -LatestRelease $pendingUpdate)
+        } else {
+            Write-Host "  [--] Mise a jour ignoree. Relancez [6] quand vous voulez." -ForegroundColor DarkGray
+        }
+    }
 }
 
 # Retourne un preset selon VRAM detectee (evite OOM sur petites cartes)
