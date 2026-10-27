@@ -39,11 +39,11 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-After each release, re-upload **the exact file you run** and compare its hash to [`checksums.sha256`](checksums.sha256).
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255`
 
-→ [VirusTotal upload](https://www.virustotal.com/gui/home/upload)
+→ **0 / 61 clean:** [VirusTotal file page](https://www.virustotal.com/gui/file/fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255)
 
-Earlier published builds scanned **0 / 60 clean**; hashes change when the script changes — always re-scan.
+After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 
 ### 4. Safer install (no `iex` pipe)
 
