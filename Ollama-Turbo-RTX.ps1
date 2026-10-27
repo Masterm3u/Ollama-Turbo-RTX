@@ -1295,59 +1295,89 @@ function Get-LatestNvidiaDriver {
 
 # MENU [6] — diagnostic + offre de mise a jour Ollama EN FIN de rapport (prompt visible)
 function Invoke-HealthCheck {
-    Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
-    Write-Host ("=" * 60) -ForegroundColor DarkGray
+    $health = [ordered]@{
+        timestamp = (Get-Date).ToString("o")
+        ollama = @{ installed = $false; version = $null; up_to_date = $null; latest = $null; running = $false; api = $false; models = 0 }
+        gpu = @{ name = $null; driver = $null; vram_mib = $null; driver_update = $null; driver_latest = $null }
+        turbo = @{ fa = $null; kv = $null; mode = (Get-ActiveTurboMode) }
+    }
+
+    if (-not $script:QuietMode) {
+        Write-Host "`n$($t.health_title)" -ForegroundColor Cyan
+        Write-Host ("=" * 60) -ForegroundColor DarkGray
+    }
 
     $pendingUpdate = $null
     $pendingNvidia = $null
     $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
     $localVerObj = $null
     if ($ollamaCmd) {
+        $health.ollama.installed = $true
         $ver = ""
         try { $ver = (& ollama --version 2>&1 | Out-String).Trim() } catch {}
-        Write-Host "  [OK] ollama CLI : $($ollamaCmd.Source)" -ForegroundColor Green
+        if (-not $script:QuietMode) { Write-Host "  [OK] ollama CLI : $($ollamaCmd.Source)" -ForegroundColor Green }
         $localVerObj = ConvertTo-OllamaVersionObject $ver
         $verShow = if ($localVerObj) { "$localVerObj" } elseif ($ver) { ($ver -split "`n" | Select-Object -Last 1).Trim() } else { "?" }
-        Write-Host "       version   : $verShow" -ForegroundColor DarkGray
+        $health.ollama.version = "$verShow"
+        if (-not $script:QuietMode) { Write-Host "       version   : $verShow" -ForegroundColor DarkGray }
 
-        Write-Host "  [*] Checking latest Ollama release on GitHub..." -ForegroundColor DarkGray
+        if (-not $script:QuietMode) { Write-Host "  [*] Checking latest Ollama release on GitHub..." -ForegroundColor DarkGray }
         $latest = Get-LatestOllamaRelease
         if ($latest.Ok -and $latest.Version -and $localVerObj) {
+            $health.ollama.latest = $latest.Tag
             if ($localVerObj -ge $latest.Version) {
-                Write-Host ("  [OK] Ollama is UP TO DATE  (installed {0} = latest {1})" -f $localVerObj, $latest.Tag) -ForegroundColor Green
+                $health.ollama.up_to_date = $true
+                if (-not $script:QuietMode) {
+                    Write-Host ("  [OK] Ollama is UP TO DATE  (installed {0} = latest {1})" -f $localVerObj, $latest.Tag) -ForegroundColor Green
+                }
             } else {
-                Write-Host ("  [!!] Ollama UPDATE AVAILABLE" ) -ForegroundColor Yellow
-                Write-Host ("       installed : {0}" -f $localVerObj) -ForegroundColor Yellow
-                Write-Host ("       latest    : {0}  (published {1})" -f $latest.Tag, $latest.PublishedAt) -ForegroundColor Yellow
-                Write-Host "       download  : https://ollama.com/download" -ForegroundColor Cyan
-                Write-Host ("       release   : {0}" -f $latest.Url) -ForegroundColor DarkGray
+                $health.ollama.up_to_date = $false
+                if (-not $script:QuietMode) {
+                    Write-Host ("  [!!] Ollama UPDATE AVAILABLE" ) -ForegroundColor Yellow
+                    Write-Host ("       installed : {0}" -f $localVerObj) -ForegroundColor Yellow
+                    Write-Host ("       latest    : {0}  (published {1})" -f $latest.Tag, $latest.PublishedAt) -ForegroundColor Yellow
+                    Write-Host "       download  : https://ollama.com/download" -ForegroundColor Cyan
+                    Write-Host ("       release   : {0}" -f $latest.Url) -ForegroundColor DarkGray
+                }
                 $pendingUpdate = $latest
             }
         } elseif ($latest.Ok -and $latest.Tag) {
-            Write-Host ("  [--] Latest on GitHub : {0} (could not parse local version)" -f $latest.Tag) -ForegroundColor DarkGray
+            $health.ollama.latest = $latest.Tag
+            if (-not $script:QuietMode) {
+                Write-Host ("  [--] Latest on GitHub : {0} (could not parse local version)" -f $latest.Tag) -ForegroundColor DarkGray
+            }
         } else {
-            Write-Host "  [--] Could not reach GitHub releases (offline / rate limit)" -ForegroundColor DarkGray
+            if (-not $script:QuietMode) {
+                Write-Host "  [--] Could not reach GitHub releases (offline / rate limit)" -ForegroundColor DarkGray
+            }
         }
     } else {
-        Write-Host "  [!!] ollama CLI not found in PATH" -ForegroundColor Red
-        Write-Host "       Install : https://ollama.com/download" -ForegroundColor Cyan
+        if (-not $script:QuietMode) {
+            Write-Host "  [!!] ollama CLI not found in PATH" -ForegroundColor Red
+            Write-Host "       Install : https://ollama.com/download" -ForegroundColor Cyan
+        }
     }
 
     $proc = Get-Process -Name "ollama*" -ErrorAction SilentlyContinue
     if ($proc) {
-        Write-Host "  [OK] Ollama process running (PID $($proc[0].Id))" -ForegroundColor Green
+        $health.ollama.running = $true
+        if (-not $script:QuietMode) { Write-Host "  [OK] Ollama process running (PID $($proc[0].Id))" -ForegroundColor Green }
     } else {
-        Write-Host "  [!!] No Ollama process running" -ForegroundColor Yellow
+        if (-not $script:QuietMode) { Write-Host "  [!!] No Ollama process running" -ForegroundColor Yellow }
     }
 
     $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
     if ($smi) {
         try {
             $line = (& nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
-            Write-Host "  [OK] NVIDIA driver / GPU : $line" -ForegroundColor Green
+            if (-not $script:QuietMode) { Write-Host "  [OK] NVIDIA driver / GPU : $line" -ForegroundColor Green }
             $gpuName = ""
             $drvVer = ""
-            if ($line -match '^\s*(.+?),\s*([\d\.]+)\s*,') {
+            if ($line -match '^\s*(.+?),\s*([\d\.]+)\s*,\s*(\d+)') {
+                $gpuName = $Matches[1].Trim()
+                $drvVer = $Matches[2].Trim()
+                $health.gpu.vram_mib = [int]$Matches[3]
+            } elseif ($line -match '^\s*(.+?),\s*([\d\.]+)\s*,') {
                 $gpuName = $Matches[1].Trim()
                 $drvVer = $Matches[2].Trim()
             } else {
@@ -1356,89 +1386,119 @@ function Invoke-HealthCheck {
                     $drvVer = (& nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
                 } catch {}
             }
+            $health.gpu.name = $gpuName
+            $health.gpu.driver = $drvVer
             if ($gpuName -and $drvVer) {
-                Write-Host "  [*] Checking latest NVIDIA Game Ready driver online..." -ForegroundColor DarkGray
+                if (-not $script:QuietMode) { Write-Host "  [*] Checking latest NVIDIA Game Ready driver online..." -ForegroundColor DarkGray }
                 $nv = Get-LatestNvidiaDriver -GpuName $gpuName -InstalledVersion $drvVer
                 if ($nv.Ok) {
+                    $health.gpu.driver_latest = $nv.Latest
+                    $health.gpu.driver_update = $nv.UpdateAvailable
                     if ($nv.UpdateAvailable) {
-                        Write-Host "  [!!] NVIDIA DRIVER UPDATE AVAILABLE" -ForegroundColor Yellow
-                        Write-Host ("       installed : {0}" -f $nv.Installed) -ForegroundColor Yellow
-                        Write-Host ("       latest    : {0}  ({1}, {2})" -f $nv.Latest, $nv.Released, $nv.Size) -ForegroundColor Yellow
-                        if ($nv.DownloadUrl) {
-                            Write-Host ("       download  : {0}" -f $nv.DownloadUrl) -ForegroundColor Cyan
+                        if (-not $script:QuietMode) {
+                            Write-Host "  [!!] NVIDIA DRIVER UPDATE AVAILABLE" -ForegroundColor Yellow
+                            Write-Host ("       installed : {0}" -f $nv.Installed) -ForegroundColor Yellow
+                            Write-Host ("       latest    : {0}  ({1}, {2})" -f $nv.Latest, $nv.Released, $nv.Size) -ForegroundColor Yellow
+                            if ($nv.DownloadUrl) { Write-Host ("       download  : {0}" -f $nv.DownloadUrl) -ForegroundColor Cyan }
+                            if ($nv.DetailsUrl) { Write-Host ("       details   : {0}" -f $nv.DetailsUrl) -ForegroundColor DarkGray }
                         }
-                        if ($nv.DetailsUrl) {
-                            Write-Host ("       details   : {0}" -f $nv.DetailsUrl) -ForegroundColor DarkGray
-                        }
-                        # Prompt IMMEDIAT (ne pas attendre la fin du rapport — plus visible)
-                        Write-Host ""
-                        Write-Host "  [Y] Oui — ouvrir le lien web dans le navigateur (aucun DL PowerShell)" -ForegroundColor Green
-                        Write-Host "  [N] Non — ignorer et continuer le diagnostic" -ForegroundColor DarkGray
-                        try {
-                            $nvChoiceNow = [string](Read-Host "  Ouvrir le telechargement NVIDIA maintenant? (Y/N)").Trim()
-                        } catch {
-                            $nvChoiceNow = "N"
-                        }
-                        if ($nvChoiceNow -match '^(o|oui|y|yes)$') {
-                            $openUrlNow = if ($nv.DownloadUrl) { $nv.DownloadUrl } else { $nv.DetailsUrl }
-                            if ($openUrlNow) {
-                                Write-Host "  [*] Ouverture du navigateur..." -ForegroundColor Cyan
-                                try {
-                                    Start-Process $openUrlNow
-                                    Write-Host "  [OK] Lien ouvert — telecharge depuis le navigateur." -ForegroundColor Green
-                                } catch {
-                                    Write-Host "  [!!] Navigateur: $($_.Exception.Message)" -ForegroundColor Red
-                                    Write-Host "      $openUrlNow" -ForegroundColor Yellow
+                        if (-not $script:QuietMode) {
+                            Write-Host ""
+                            Write-Host "  [Y] Oui — ouvrir le lien web dans le navigateur (aucun DL PowerShell)" -ForegroundColor Green
+                            Write-Host "  [N] Non — ignorer et continuer le diagnostic" -ForegroundColor DarkGray
+                            try {
+                                $nvChoiceNow = [string](Read-Host "  Ouvrir le telechargement NVIDIA maintenant? (Y/N)").Trim()
+                            } catch { $nvChoiceNow = "N" }
+                            if ($nvChoiceNow -match '^(o|oui|y|yes)$') {
+                                $openUrlNow = if ($nv.DownloadUrl) { $nv.DownloadUrl } else { $nv.DetailsUrl }
+                                if ($openUrlNow) {
+                                    Write-Host "  [*] Ouverture du navigateur..." -ForegroundColor Cyan
+                                    try {
+                                        Start-Process $openUrlNow
+                                        Write-Host "  [OK] Lien ouvert — telecharge depuis le navigateur." -ForegroundColor Green
+                                    } catch {
+                                        Write-Host "  [!!] Navigateur: $($_.Exception.Message)" -ForegroundColor Red
+                                        Write-Host "      $openUrlNow" -ForegroundColor Yellow
+                                    }
                                 }
+                            } else {
+                                Write-Host "  [--] Driver ignore — diagnostic continue." -ForegroundColor DarkGray
                             }
-                        } else {
-                            Write-Host "  [--] Driver ignore — diagnostic continue." -ForegroundColor DarkGray
+                            Write-Host ""
                         }
-                        Write-Host ""
-                        # Ne pas re-proposer a la fin
                         $pendingNvidia = $null
                     } else {
-                        Write-Host ("  [OK] NVIDIA driver UP TO DATE  (installed {0} = latest {1})" -f $nv.Installed, $nv.Latest) -ForegroundColor Green
+                        if (-not $script:QuietMode) {
+                            Write-Host ("  [OK] NVIDIA driver UP TO DATE  (installed {0} = latest {1})" -f $nv.Installed, $nv.Latest) -ForegroundColor Green
+                        }
                     }
                 } else {
-                    Write-Host ("  [--] NVIDIA driver check skipped: {0}" -f $(if ($nv.Error) { $nv.Error } else { "API unreachable" })) -ForegroundColor DarkGray
-                    Write-Host ("       search    : {0}" -f $nv.SearchUrl) -ForegroundColor DarkGray
+                    if (-not $script:QuietMode) {
+                        Write-Host ("  [--] NVIDIA driver check skipped: {0}" -f $(if ($nv.Error) { $nv.Error } else { "API unreachable" })) -ForegroundColor DarkGray
+                        Write-Host ("       search    : {0}" -f $nv.SearchUrl) -ForegroundColor DarkGray
+                    }
                 }
             }
         } catch {
-            Write-Host "  [!!] nvidia-smi failed" -ForegroundColor Yellow
+            if (-not $script:QuietMode) { Write-Host "  [!!] nvidia-smi failed" -ForegroundColor Yellow }
         }
     } else {
-        Write-Host "  [!!] nvidia-smi not found (NVIDIA driver tools missing?)" -ForegroundColor Yellow
+        if (-not $script:QuietMode) { Write-Host "  [!!] nvidia-smi not found (NVIDIA driver tools missing?)" -ForegroundColor Yellow }
     }
 
     try {
         $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 3 -ErrorAction Stop
         $count = @($tags.models).Count
-        Write-Host "  [OK] API http://127.0.0.1:11434 reachable ($count local model(s))" -ForegroundColor Green
+        $health.ollama.api = $true
+        $health.ollama.models = $count
+        if (-not $script:QuietMode) {
+            Write-Host "  [OK] API http://127.0.0.1:11434 reachable ($count local model(s))" -ForegroundColor Green
+        }
     } catch {
-        Write-Host "  [!!] API 127.0.0.1:11434 not reachable" -ForegroundColor Red
+        if (-not $script:QuietMode) { Write-Host "  [!!] API 127.0.0.1:11434 not reachable" -ForegroundColor Red }
     }
 
     try {
         $ps = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/ps" -TimeoutSec 3 -ErrorAction Stop
         $loaded = @($ps.models)
-        if ($loaded.Count -gt 0) {
-            foreach ($m in $loaded) {
-                Write-Host ("  [OK] Loaded model : {0}" -f $m.name) -ForegroundColor Green
+        if (-not $script:QuietMode) {
+            if ($loaded.Count -gt 0) {
+                foreach ($m in $loaded) {
+                    Write-Host ("  [OK] Loaded model : {0}" -f $m.name) -ForegroundColor Green
+                }
+            } else {
+                Write-Host "  [--] No model currently loaded in VRAM" -ForegroundColor DarkGray
             }
-        } else {
-            Write-Host "  [--] No model currently loaded in VRAM" -ForegroundColor DarkGray
         }
     } catch {}
 
     $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
     $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
-    Write-Host ("  [--] Machine FA={0}  KV={1}" -f $(if ($fa) { $fa } else { "(unset)" }), $(if ($kv) { $kv } else { "(unset)" })) -ForegroundColor DarkGray
-    Write-Host ("=" * 60) -ForegroundColor DarkGray
+    $health.turbo.fa = $fa
+    $health.turbo.kv = $kv
+    if (-not $script:QuietMode) {
+        Write-Host ("  [--] Machine FA={0}  KV={1}" -f $(if ($fa) { $fa } else { "(unset)" }), $(if ($kv) { $kv } else { "(unset)" })) -ForegroundColor DarkGray
+        Write-Host ("=" * 60) -ForegroundColor DarkGray
+    } else {
+        Write-Turbo -Level ok -Message ("health ollama={0} api={1} models={2} gpu={3} driver={4} fa={5} kv={6} mode={7}" -f `
+            $(if ($health.ollama.version) { $health.ollama.version } else { "missing" }),
+            $health.ollama.api, $health.ollama.models,
+            $(if ($health.gpu.name) { $health.gpu.name } else { "?" }),
+            $(if ($health.gpu.driver) { $health.gpu.driver } else { "?" }),
+            $(if ($fa) { $fa } else { "off" }),
+            $(if ($kv) { $kv } else { "fp16" }),
+            $health.turbo.mode)
+    }
+
+    if ($Out -and $Out -match '\.json$') {
+        $dir = Split-Path -Parent $Out
+        if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        ($health | ConvertTo-Json -Depth 6) | Set-Content -Path $Out -Encoding UTF8
+        Write-Turbo -Level ok -Message ("health_json={0}" -f $Out)
+    }
 
     # --- NVIDIA : Y ouvre le navigateur (aucun DL PowerShell), N continue ---
-    if ($pendingNvidia) {
+    if ($pendingNvidia -and -not $script:QuietMode) {
         Write-Host ""
         Write-Host "  ======================================================" -ForegroundColor Yellow
         Write-Host "   DRIVER NVIDIA — MISE A JOUR DISPONIBLE" -ForegroundColor Yellow
@@ -1474,7 +1534,7 @@ function Invoke-HealthCheck {
     }
 
     # --- Ollama : Y lance l'installateur (curl), N continue ---
-    if ($pendingUpdate) {
+    if ($pendingUpdate -and -not $script:QuietMode) {
         Write-Host ""
         Write-Host "  ======================================================" -ForegroundColor Yellow
         Write-Host "   MISE A JOUR OLLAMA DISPONIBLE / UPDATE AVAILABLE" -ForegroundColor Yellow
@@ -1499,7 +1559,7 @@ function Invoke-HealthCheck {
 }
 
 # Retourne un preset selon VRAM detectee (evite OOM sur petites cartes)
-function Get-GpuSmartPreset {
+function Get-GpuVramGB {
     $vram = $null
     $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
     if ($smi) {
@@ -1509,34 +1569,53 @@ function Get-GpuSmartPreset {
             if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vram = [math]::Round($n / 1024.0, 1) }
         } catch {}
     }
+    return $vram
+}
+
+function Get-GpuSmartPreset {
+    $vram = Get-GpuVramGB
     if (-not $vram) {
-        return @{ Mode = "context"; CtxHint = 8192; Tier = "unknown"; Why = "GPU VRAM unknown — defaulting to Turbo Context (FA+Q8) as safest speed/VRAM trade-off." }
+        return @{ Mode = "context"; CtxHint = 8192; Tier = "unknown"; VramGB = $null; Why = "GPU VRAM unknown — defaulting to Turbo Context (FA+Q8) as safest speed/VRAM trade-off." }
     }
     if ($vram -lt 10) {
-        return @{ Mode = "context"; CtxHint = 4096; Tier = "8GB"; Why = "~${vram} GB VRAM: prefer FA+Q8 and moderate context (~4k) to avoid OOM." }
+        return @{ Mode = "context"; CtxHint = 4096; Tier = "8GB"; VramGB = $vram; Why = "~${vram} GB VRAM: prefer FA+Q8 and moderate context (~4k) to avoid OOM." }
     }
     if ($vram -lt 14) {
-        return @{ Mode = "context"; CtxHint = 8192; Tier = "12GB"; Why = "~${vram} GB VRAM: FA+Q8 recommended; context ~8k is a good default." }
+        return @{ Mode = "context"; CtxHint = 8192; Tier = "12GB"; VramGB = $vram; Why = "~${vram} GB VRAM: FA+Q8 recommended; context ~8k is a good default." }
     }
     if ($vram -lt 20) {
-        return @{ Mode = "context"; CtxHint = 16384; Tier = "16GB"; Why = "~${vram} GB VRAM: FA+Q8 unlocks long context (~16k) with ~50% KV savings." }
+        return @{ Mode = "context"; CtxHint = 16384; Tier = "16GB"; VramGB = $vram; Why = "~${vram} GB VRAM: FA+Q8 unlocks long context (~16k) with ~50% KV savings." }
     }
-    return @{ Mode = "speed"; CtxHint = 32768; Tier = "24GB+"; Why = "~${vram} GB VRAM: you can run FA-only (FP16 KV) for max quality/speed; use FA+Q8 if you need huge context." }
+    return @{ Mode = "speed"; CtxHint = 32768; Tier = "24GB+"; VramGB = $vram; Why = "~${vram} GB VRAM: you can run FA-only (FP16 KV) for max quality/speed; use FA+Q8 if you need huge context." }
 }
 
 # MENU [7] — propose et applique le preset selon la VRAM
 function Invoke-SmartGpuPreset {
-    Write-Host "`n$($t.smart_title)" -ForegroundColor Cyan
     $preset = Get-GpuSmartPreset
-    Write-Host "  Tier        : $($preset.Tier)" -ForegroundColor White
-    Write-Host "  Suggested   : Turbo $($preset.Mode) | ctx hint ~$($preset.CtxHint)" -ForegroundColor Green
-    Write-Host "  Why         : $($preset.Why)" -ForegroundColor DarkGray
+    if ($script:QuietMode) {
+        Write-Turbo -Level ok -Message ("preset tier={0} vram={1}GB mode={2} ctx_hint={3}" -f $preset.Tier, $preset.VramGB, $preset.Mode, $preset.CtxHint)
+        Save-TurboHistorySnapshot -Reason "before-smart-$($preset.Tier)"
+        Install-Optimizations -Mode $preset.Mode -SkipHistory
+        return
+    }
+
+    Write-Host "`n$($t.smart_title)" -ForegroundColor Cyan
+    Write-Host "  Table des presets selon VRAM :" -ForegroundColor DarkGray
+    Write-Host ("  {0,-8} | {1,-14} | {2,-10} | {3}" -f "TIER", "MODE TURBO", "CTX HINT", "USAGE") -ForegroundColor Yellow
+    Write-Host ("  {0,-8} | {1,-14} | {2,-10} | {3}" -f "8GB", "Context FA+Q8", "~4096", "eviter OOM") -ForegroundColor DarkGray
+    Write-Host ("  {0,-8} | {1,-14} | {2,-10} | {3}" -f "12GB", "Context FA+Q8", "~8192", "quotidien") -ForegroundColor DarkGray
+    Write-Host ("  {0,-8} | {1,-14} | {2,-10} | {3}" -f "16GB", "Context FA+Q8", "~16384", "long docs / coding") -ForegroundColor DarkGray
+    Write-Host ("  {0,-8} | {1,-14} | {2,-10} | {3}" -f "24GB+", "Speed FA", "~32768", "max debit FP16") -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host ("  Ta carte     : ~{0} GB  →  tier {1}" -f $(if ($preset.VramGB) { $preset.VramGB } else { "?" }), $preset.Tier) -ForegroundColor White
+    Write-Host ("  Recommande  : Turbo {0} | num_ctx ~{1}" -f $preset.Mode, $preset.CtxHint) -ForegroundColor Green
+    Write-Host ("  Pourquoi    : {0}" -f $preset.Why) -ForegroundColor DarkGray
     Write-Host ""
     $ok = Read-Host "Apply this preset now? (Y/N) [Y]"
     if ($ok -and $ok -notmatch '^(o|oui|y|yes|)$') { return }
     Save-TurboHistorySnapshot -Reason "before-smart-$($preset.Tier)"
     Install-Optimizations -Mode $preset.Mode -SkipHistory
-    Write-Host "  Tip: when chatting/coding, keep num_ctx around $($preset.CtxHint) if you hit OOM." -ForegroundColor DarkGray
+    Write-Host ("  Tip: dans Cursor/chat, garde num_ctx autour de {0} si OOM." -f $preset.CtxHint) -ForegroundColor DarkGray
 }
 
 # MENU [8] — Coding/Cursor (FA+Q8 long prompt) vs Fast Chat (FA seul)
@@ -1617,10 +1696,30 @@ function Export-BenchmarkArtifacts {
     ) | Set-Content -Path $csvPath -Encoding UTF8
     Write-Host ($t.export_ok -f $csvPath) -ForegroundColor Green
 
+    # Carte Reddit / Discord — pret a coller (markdown leger)
     $card = @"
-Ollama-Turbo-RTX bench
-GPU: $($Hw.Gpu) | $($Hw.Cpu) | RAM $($Hw.Ram)
-Model: $TestModel | ctx $BenchCtx | 3-pass avg
+**Ollama-Turbo-RTX** bench (3-pass avg)
+
+| | |
+|---|---|
+| **GPU** | $($Hw.Gpu) |
+| **CPU / RAM** | $($Hw.Cpu) / $($Hw.Ram) |
+| **Model** | ``$TestModel`` @ ctx $BenchCtx |
+
+| Config | t/s | vs Stock |
+|---|---:|---:|
+| Stock | $($ResStock.Eval) | — |
+| Turbo Speed (FA) | $($ResSpeed.Eval) | $GainSpeedStr |
+| Turbo Context (FA+Q8) | $($ResContext.Eval) | $GainCtxStr (~-50% KV VRAM) |
+
+**Winner:** $BestMode  
+Tool: https://github.com/Masterm3u/Ollama-Turbo-RTX
+"@
+    $cardPlain = @"
+Ollama-Turbo-RTX bench (3-pass avg)
+GPU: $($Hw.Gpu)
+CPU/RAM: $($Hw.Cpu) / $($Hw.Ram)
+Model: $TestModel | ctx $BenchCtx
 Stock: $($ResStock.Eval) t/s
 Turbo Speed (FA): $($ResSpeed.Eval) t/s ($GainSpeedStr)
 Turbo Context (FA+Q8): $($ResContext.Eval) t/s ($GainCtxStr) | ~-50% KV VRAM
@@ -1631,8 +1730,20 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
     [System.IO.File]::WriteAllText($cardPath, $card, [System.Text.Encoding]::UTF8)
     Write-Host ($t.export_ok -f $cardPath) -ForegroundColor Green
     Write-Host "`n$($t.reddit_card)" -ForegroundColor Yellow
-    Write-Host $card -ForegroundColor White
-    try { Set-Clipboard -Value $card } catch {}
+    Write-Host $cardPlain -ForegroundColor White
+    Write-Host "`n  (Markdown Reddit aussi dans le fichier *-reddit.txt)" -ForegroundColor DarkGray
+    $clipOk = $false
+    try { Set-Clipboard -Value $cardPlain; $clipOk = $true } catch {}
+    if (-not $clipOk) {
+        try {
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+            [System.Windows.Forms.Clipboard]::SetText($cardPlain)
+            $clipOk = $true
+        } catch {}
+    }
+    if ($clipOk) {
+        Write-Host "  [OK] Carte copiee dans le presse-papiers — Ctrl+V sur Reddit." -ForegroundColor Green
+    }
 }
 
 function Show-Status {
