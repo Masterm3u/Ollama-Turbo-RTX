@@ -12,6 +12,8 @@
 #   .\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Out multi.json
 #   .\Ollama-Turbo-RTX.ps1 -Action vram
 #   .\Ollama-Turbo-RTX.ps1 -Action watchdog-install
+#   .\Ollama-Turbo-RTX.ps1 -Action install-context -Quiet   # CI / moins de texte
+#   .\Ollama-Turbo-RTX.ps1 -Theme Minimal
 # =============================================================================
 param (
     [string]$Action = "",   # install-context | install-speed | restore | status | bench | bench-multi | health | vram | watchdog | watchdog-install | watchdog-remove
@@ -20,11 +22,51 @@ param (
     [string]$Models = "",   # bench-multi CLI : "7b,14b,32b" ou noms separes par virgule
     [int]$Ctx = 0,          # bench CLI : num_ctx (ex. 16384)
     [string]$Out = "",      # bench CLI : chemin rapport .json / .txt
-    [switch]$Notify         # toasts Windows (install / bench / watchdog)
+    [switch]$Notify,        # toasts Windows (install / bench / watchdog)
+    [switch]$Quiet,         # sortie minimale, CI-friendly (pas de banner / Pause)
+    [ValidateSet("", "Full", "Minimal")]
+    [string]$Theme = ""     # Full (defaut) | Minimal (menu court, pas d'ASCII art)
 )
 
 # Affichage UTF-8 pour accents / bandeau ASCII dans la console Windows
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Quiet auto: -Quiet, CI, ou action CLI sans menu
+$script:QuietMode = [bool]$Quiet -or ($env:CI -eq "true") -or ($env:GITHUB_ACTIONS -eq "true") -or ($env:OLLAMA_TURBO_QUIET -eq "1")
+if ($Action -and -not $PSBoundParameters.ContainsKey("Quiet")) {
+    # Les actions CLI restent sobres par defaut (sauf bench interactif)
+    if ($Action -notmatch '^(bench|bench-multi)$') { $script:QuietMode = $true }
+}
+$script:ThemeMode = if ($Theme) { $Theme } elseif ($script:QuietMode) { "Minimal" } else { "Full" }
+
+function Write-Turbo {
+    param(
+        [string]$Message,
+        [ValidateSet("info", "ok", "warn", "err", "verbose")]
+        [string]$Level = "info",
+        [ConsoleColor]$Color = [ConsoleColor]::Gray
+    )
+    if ($script:QuietMode -and $Level -eq "verbose") { return }
+    if ($script:QuietMode) {
+        # CI-friendly: PREFIX message (pas de couleur / ASCII)
+        $prefix = switch ($Level) {
+            "ok"   { "OK" }
+            "warn" { "WARN" }
+            "err"  { "ERROR" }
+            default { "INFO" }
+        }
+        Write-Output ("{0} {1}" -f $prefix, ($Message -replace '^\s+', ''))
+        return
+    }
+    $c = switch ($Level) {
+        "ok"   { [ConsoleColor]::Green }
+        "warn" { [ConsoleColor]::Yellow }
+        "err"  { [ConsoleColor]::Red }
+        "info" { [ConsoleColor]::Cyan }
+        default { $Color }
+    }
+    Write-Host $Message -ForegroundColor $c
+}
 
 # Dictionnaires d'interface (textes menu / messages) — aucune action systeme ici
 $i18n = @{
@@ -33,6 +75,8 @@ $i18n = @{
         admin_elevate  = "[*] Elevating to Administrator mode..."
         gpu_detect     = "[*] Detecting graphics hardware..."
         gpu_none       = "[ERROR] No compatible NVIDIA GPU detected. Aborting."
+        gpu_unsupported_title = " GPU NOT SUPPORTED BY OLLAMA-TURBO-RTX"
+        gpu_unsupported_body  = "This tool optimizes NVIDIA RTX (Flash Attention + KV q8_0 Machine flags on Windows)."
         gpu_found      = "[OK] GPU Detected: {0} (~{1} GB VRAM)"
         applying       = "[*] Applying hardware acceleration settings..."
         fa_set         = "  -> OLLAMA_FLASH_ATTENTION = 1 [ENABLED]"
@@ -120,7 +164,7 @@ $i18n = @{
         opt_w          = "  [W] Watchdog after reboot (install / check / remove)"
         opt_s          = "  [S] Star GitHub + Buy me a coffee (opens browser)"
         opt_q          = "  [Q] Exit"
-        prompt_choice  = "Enter your choice (1-9, A, M, W, S or Q)"
+        prompt_choice  = "Enter your choice (1-9, A, M, W, S, T or Q)"
         support_tip    = "  Tip: press [S] to open GitHub star + buymeacoffee.com/masterm3u"
         health_title   = " SYSTEM HEALTH CHECK"
         smart_title    = " SMART GPU PRESET"
@@ -137,6 +181,8 @@ $i18n = @{
         admin_elevate  = "[*] Elevation des privileges en cours..."
         gpu_detect     = "[*] Detection du materiel graphique..."
         gpu_none       = "[ERREUR] Aucun GPU NVIDIA compatible detecte. Abandon."
+        gpu_unsupported_title = " GPU NON SUPPORTE PAR OLLAMA-TURBO-RTX"
+        gpu_unsupported_body  = "Cet outil cible les NVIDIA RTX (Flash Attention + KV q8_0, flags Machine Windows)."
         gpu_found      = "[OK] GPU Detecte : {0} (~{1} Go VRAM)"
         applying       = "[*] Application des optimisations materielles..."
         fa_set         = "  -> OLLAMA_FLASH_ATTENTION = 1 [ACTIVE]"
@@ -224,7 +270,7 @@ $i18n = @{
         opt_w          = "  [W] Watchdog apres reboot (installer / verifier / retirer)"
         opt_s          = "  [S] Etoile GitHub + cafe (ouvre le navigateur)"
         opt_q          = "  [Q] Quitter"
-        prompt_choice  = "Entrez votre choix (1-9, A, M, W, S ou Q)"
+        prompt_choice  = "Entrez votre choix (1-9, A, M, W, S, T ou Q)"
         support_tip    = "  Astuce: tapez [S] pour ouvrir GitHub + buymeacoffee.com/masterm3u"
         health_title   = " DIAGNOSTIC SYSTEME"
         smart_title    = " PRESET GPU INTELLIGENT"
@@ -465,6 +511,8 @@ function Check-Admin {
         if ($Ctx -gt 0) { $arg += " -Ctx $Ctx" }
         if ($Out) { $arg += " -Out `"$Out`"" }
         if ($Notify) { $arg += " -Notify" }
+        if ($Quiet -or $script:QuietMode) { $arg += " -Quiet" }
+        if ($script:ThemeMode) { $arg += " -Theme `"$($script:ThemeMode)`"" }
         Start-Process powershell.exe -ArgumentList $arg -Verb RunAs
     }
     Exit
@@ -658,6 +706,146 @@ function Get-ActiveTurboMode {
     if ($fa -eq '1' -and $kv -eq 'q8_0') { return "context" }
     if ($fa -eq '1') { return "speed" }
     return "stock"
+}
+
+# Detecte le vendeur GPU (NVIDIA / AMD / Intel / Unknown) — lecture seule
+function Get-DetectedGpuVendor {
+    $adapters = @()
+    try {
+        $adapters = @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -and $_.Name -notmatch 'Audio|Virtual|Basic Display' })
+    } catch {}
+
+    $names = @($adapters | ForEach-Object { [string]$_.Name })
+    $hasNvidia = $false
+    $hasAmd = $false
+    $hasIntel = $false
+    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+    if ($smi) {
+        try {
+            $line = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
+            if ($line) { $hasNvidia = $true; $names = @($line.Trim()) + $names }
+        } catch {}
+    }
+    foreach ($n in $names) {
+        if ($n -match '(?i)NVIDIA|GeForce|RTX|Quadro|Tesla') { $hasNvidia = $true }
+        if ($n -match '(?i)AMD|Radeon|Instinct') { $hasAmd = $true }
+        if ($n -match '(?i)Intel.*Arc|Intel.*Graphics|UHD Graphics|Iris') { $hasIntel = $true }
+    }
+
+    $primary = "Unknown"
+    $primaryName = if ($names.Count -gt 0) { $names[0] } else { "(none)" }
+    if ($hasNvidia) {
+        $primary = "NVIDIA"
+        $nv = $names | Where-Object { $_ -match '(?i)NVIDIA|GeForce|RTX' } | Select-Object -First 1
+        if ($nv) { $primaryName = $nv }
+    } elseif ($hasAmd) {
+        $primary = "AMD"
+        $a = $names | Where-Object { $_ -match '(?i)AMD|Radeon' } | Select-Object -First 1
+        if ($a) { $primaryName = $a }
+    } elseif ($hasIntel) {
+        $primary = "Intel"
+        $i = $names | Where-Object { $_ -match '(?i)Intel' } | Select-Object -First 1
+        if ($i) { $primaryName = $i }
+    }
+
+    return [pscustomobject]@{
+        Vendor      = $primary
+        Name        = $primaryName
+        AllNames    = ($names | Select-Object -Unique)
+        HasNvidia   = $hasNvidia
+        HasAmd      = $hasAmd
+        HasIntel    = $hasIntel
+        Supported   = $hasNvidia
+    }
+}
+
+# Message clair AMD/Intel/autre — ne force PAS NVIDIA sans explication
+function Show-UnsupportedGpuMessage {
+    param(
+        [object]$GpuInfo,
+        [switch]$OpenLinks
+    )
+    if (-not $GpuInfo) { $GpuInfo = Get-DetectedGpuVendor }
+    $title = if ($t.gpu_unsupported_title) { $t.gpu_unsupported_title } else { " GPU NOT SUPPORTED" }
+    $body = if ($t.gpu_unsupported_body) { $t.gpu_unsupported_body } else {
+        "This tool targets NVIDIA RTX on Windows (Machine FA + KV q8_0)."
+    }
+
+    $links = @{
+        OllamaGpu = "https://github.com/ollama/ollama/blob/main/docs/gpu.md"
+        AmdRoCm   = "https://rocm.docs.amd.com/en/latest/"
+        AmdOllama = "https://github.com/ollama/ollama/blob/main/docs/gpu.md#amd-radeon"
+        IntelArc  = "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-arc-gpus-with-ollama.html"
+        IntelGpu  = "https://github.com/ollama/ollama/blob/main/docs/gpu.md#intel-arc-gpus"
+        NvidiaDrv = "https://www.nvidia.com/Download/index.aspx"
+        ThisRepo  = "https://github.com/Masterm3u/Ollama-Turbo-RTX"
+    }
+
+    if ($script:QuietMode) {
+        Write-Turbo -Level err -Message ("unsupported-gpu vendor={0} name={1}" -f $GpuInfo.Vendor, $GpuInfo.Name)
+        Write-Turbo -Level info -Message ("docs={0}" -f $links.OllamaGpu)
+        switch ($GpuInfo.Vendor) {
+            "AMD"   { Write-Turbo -Level info -Message ("amd_rocm={0}" -f $links.AmdRoCm); Write-Turbo -Level info -Message ("amd_ollama={0}" -f $links.AmdOllama) }
+            "Intel" { Write-Turbo -Level info -Message ("intel_docs={0}" -f $links.IntelGpu) }
+            default { Write-Turbo -Level info -Message ("need_nvidia_rtx docs={0}" -f $links.ThisRepo) }
+        }
+        return 2
+    }
+
+    Write-Host ""
+    Write-Host ("=" * 64) -ForegroundColor Yellow
+    Write-Host $title -ForegroundColor Yellow
+    Write-Host ("=" * 64) -ForegroundColor Yellow
+    Write-Host ("  Detecte / Detected : {0}" -f $GpuInfo.Name) -ForegroundColor White
+    Write-Host ("  Vendeur / Vendor   : {0}" -f $GpuInfo.Vendor) -ForegroundColor White
+    Write-Host ""
+    Write-Host ("  {0}" -f $body) -ForegroundColor DarkGray
+    Write-Host "  Ollama peut tourner sur AMD/Intel, mais CE script ne configure" -ForegroundColor DarkGray
+    Write-Host "  que le chemin NVIDIA RTX (FA + Q8) sous Windows." -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Liens utiles :" -ForegroundColor Cyan
+    Write-Host ("    Ollama GPU docs : {0}" -f $links.OllamaGpu) -ForegroundColor DarkGray
+    switch ($GpuInfo.Vendor) {
+        "AMD" {
+            Write-Host "  -> AMD Radeon : utilisez le support ROCm / docs Ollama AMD" -ForegroundColor Yellow
+            Write-Host ("    ROCm         : {0}" -f $links.AmdRoCm) -ForegroundColor Cyan
+            Write-Host ("    Ollama AMD   : {0}" -f $links.AmdOllama) -ForegroundColor Cyan
+        }
+        "Intel" {
+            Write-Host "  -> Intel Arc / iGPU : voir docs Ollama Intel" -ForegroundColor Yellow
+            Write-Host ("    Ollama Intel : {0}" -f $links.IntelGpu) -ForegroundColor Cyan
+            Write-Host ("    Intel article: {0}" -f $links.IntelArc) -ForegroundColor Cyan
+        }
+        default {
+            Write-Host "  -> Installez un GPU NVIDIA RTX + driver Game Ready, puis relancez." -ForegroundColor Yellow
+            Write-Host ("    Drivers NVIDIA : {0}" -f $links.NvidiaDrv) -ForegroundColor Cyan
+        }
+    }
+    Write-Host ("    Ce projet      : {0}" -f $links.ThisRepo) -ForegroundColor DarkGray
+    Write-Host ("=" * 64) -ForegroundColor Yellow
+    Write-Host ""
+
+    if ($OpenLinks -and -not $script:QuietMode) {
+        Write-Host "  [Y] Ouvrir la doc Ollama GPU dans le navigateur" -ForegroundColor Green
+        Write-Host "  [N] Continuer sans ouvrir" -ForegroundColor DarkGray
+        try { $ans = [string](Read-Host "  Ouvrir les liens? (Y/N) [N]").Trim() } catch { $ans = "N" }
+        if ($ans -match '^(o|oui|y|yes)$') {
+            $toOpen = @($links.OllamaGpu)
+            if ($GpuInfo.Vendor -eq "AMD") { $toOpen += $links.AmdOllama }
+            if ($GpuInfo.Vendor -eq "Intel") { $toOpen += $links.IntelGpu }
+            foreach ($u in $toOpen) { try { Start-Process $u } catch {} }
+        }
+    }
+    return 2
+}
+
+function Test-NvidiaGpuOrExplain {
+    param([switch]$OpenLinks)
+    $info = Get-DetectedGpuVendor
+    if ($info.Supported) { return $true }
+    [void](Show-UnsupportedGpuMessage -GpuInfo $info -OpenLinks:$OpenLinks)
+    return $false
 }
 
 # Detecte le GPU NVIDIA (nvidia-smi de preference) pour l'affichage statut / rapport — lecture seule
@@ -1448,35 +1636,58 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
 }
 
 function Show-Status {
-    Write-Host "`n========================================================" -ForegroundColor DarkGray
-    Write-Host $t.status_title -ForegroundColor Cyan
-    Write-Host "========================================================" -ForegroundColor DarkGray
-
     $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
     $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
     $hostBind = [System.Environment]::GetEnvironmentVariable('OLLAMA_HOST', 'Machine')
     $mode = Get-ActiveTurboMode
+    $vendor = Get-DetectedGpuVendor
     $gpuInfo = Get-NvidiaGpuInfo
+    $running = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
+
+    if ($script:QuietMode) {
+        Write-Turbo -Level ok -Message ("status mode={0} fa={1} kv={2} host={3} gpu_vendor={4} gpu={5} ollama={6}" -f `
+            $mode,
+            $(if ($fa) { $fa } else { "off" }),
+            $(if ($kv) { $kv } else { "fp16" }),
+            $(if ($hostBind) { $hostBind } else { "default" }),
+            $vendor.Vendor,
+            $(if ($gpuInfo) { $gpuInfo } else { $vendor.Name }),
+            $(if ($running) { "running" } else { "stopped" }))
+        if (-not $vendor.Supported) {
+            Write-Turbo -Level warn -Message "turbo_flags_need_nvidia_rtx see https://github.com/ollama/ollama/blob/main/docs/gpu.md"
+        }
+        return
+    }
+
+    Write-Host "`n========================================================" -ForegroundColor DarkGray
+    Write-Host $t.status_title -ForegroundColor Cyan
+    Write-Host "========================================================" -ForegroundColor DarkGray
 
     Write-Host $t.active_label -NoNewline
     switch ($mode) {
         "context" {
             Write-Host $t.active_context -ForegroundColor Green
-            Write-Host $t.active_hint_c -ForegroundColor DarkGray
+            if ($script:ThemeMode -ne "Minimal") { Write-Host $t.active_hint_c -ForegroundColor DarkGray }
         }
         "speed" {
             Write-Host $t.active_speed -ForegroundColor Green
-            Write-Host $t.active_hint_s -ForegroundColor DarkGray
+            if ($script:ThemeMode -ne "Minimal") { Write-Host $t.active_hint_s -ForegroundColor DarkGray }
         }
         default {
             Write-Host $t.active_stock -ForegroundColor Yellow
-            Write-Host $t.active_hint_k -ForegroundColor DarkGray
+            if ($script:ThemeMode -ne "Minimal") { Write-Host $t.active_hint_k -ForegroundColor DarkGray }
         }
     }
     Write-Host " ------------------------------------------------------" -ForegroundColor DarkGray
 
     Write-Host $t.gpu_label -NoNewline
-    if ($gpuInfo) { Write-Host $gpuInfo -ForegroundColor Green } else { Write-Host $t.gpu_unknown -ForegroundColor Yellow }
+    if ($vendor.Supported -and $gpuInfo) {
+        Write-Host $gpuInfo -ForegroundColor Green
+    } elseif (-not $vendor.Supported) {
+        Write-Host ("{0} [{1}] — NON SUPPORTE par Turbo-RTX" -f $vendor.Name, $vendor.Vendor) -ForegroundColor Yellow
+    } else {
+        Write-Host $t.gpu_unknown -ForegroundColor Yellow
+    }
 
     Write-Host $t.fa_label -NoNewline
     if ($fa -eq '1') { Write-Host $t.fa_active -ForegroundColor Green } else { Write-Host $t.fa_stock -ForegroundColor Red }
@@ -1487,7 +1698,6 @@ function Show-Status {
     Write-Host $t.bind_label -NoNewline
     if ($hostBind) { Write-Host $hostBind -ForegroundColor Green } else { Write-Host $t.bind_stock -ForegroundColor Yellow }
 
-    $running = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
     Write-Host $t.service_label -NoNewline
     if ($running) { Write-Host $t.srv_running -ForegroundColor Green } else { Write-Host $t.srv_stopped -ForegroundColor Red }
 
@@ -1496,29 +1706,38 @@ function Show-Status {
 
 function Show-Menu {
     $mode = Get-ActiveTurboMode
+    $minimal = ($script:ThemeMode -eq "Minimal")
 
     Write-Host $t.menu_title -ForegroundColor Yellow
-    Write-Host $t.menu_help -ForegroundColor DarkGray
-    Write-Host ""
+    if (-not $minimal) {
+        Write-Host $t.menu_help -ForegroundColor DarkGray
+        Write-Host ""
+    }
 
     Write-Host $t.opt_1 -NoNewline -ForegroundColor White
     if ($mode -eq "context") { Write-Host $t.badge_active -ForegroundColor Green } else { Write-Host "" }
-    Write-Host $t.opt_1_h1 -ForegroundColor DarkGray
-    Write-Host $t.opt_1_h2 -ForegroundColor DarkGray
-    Write-Host $t.opt_1_h3 -ForegroundColor DarkGray
-    Write-Host ""
+    if (-not $minimal) {
+        Write-Host $t.opt_1_h1 -ForegroundColor DarkGray
+        Write-Host $t.opt_1_h2 -ForegroundColor DarkGray
+        Write-Host $t.opt_1_h3 -ForegroundColor DarkGray
+        Write-Host ""
+    }
 
     Write-Host $t.opt_2 -NoNewline -ForegroundColor White
     if ($mode -eq "speed") { Write-Host $t.badge_active -ForegroundColor Green } else { Write-Host "" }
-    Write-Host $t.opt_2_h1 -ForegroundColor DarkGray
-    Write-Host $t.opt_2_h2 -ForegroundColor DarkGray
-    Write-Host $t.opt_2_h3 -ForegroundColor DarkGray
-    Write-Host ""
+    if (-not $minimal) {
+        Write-Host $t.opt_2_h1 -ForegroundColor DarkGray
+        Write-Host $t.opt_2_h2 -ForegroundColor DarkGray
+        Write-Host $t.opt_2_h3 -ForegroundColor DarkGray
+        Write-Host ""
+    }
 
     Write-Host $t.opt_3 -NoNewline -ForegroundColor White
     if ($mode -eq "stock") { Write-Host $t.badge_active -ForegroundColor Yellow } else { Write-Host "" }
-    Write-Host $t.opt_3_h1 -ForegroundColor DarkGray
-    Write-Host ""
+    if (-not $minimal) {
+        Write-Host $t.opt_3_h1 -ForegroundColor DarkGray
+        Write-Host ""
+    }
 
     Write-Host $t.opt_4
     Write-Host $t.opt_5
@@ -1530,8 +1749,19 @@ function Show-Menu {
     if ($t.opt_m) { Write-Host $t.opt_m }
     if ($t.opt_w) { Write-Host $t.opt_w }
     if ($t.opt_s) { Write-Host $t.opt_s -ForegroundColor DarkYellow }
+    Write-Host "  [T] Theme: Full / Minimal  (actuel: $($script:ThemeMode))" -ForegroundColor DarkGray
     Write-Host $t.opt_q
     Write-Host ""
+}
+
+function Invoke-ThemeToggle {
+    if ($script:ThemeMode -eq "Minimal") {
+        $script:ThemeMode = "Full"
+        $script:QuietMode = $false
+    } else {
+        $script:ThemeMode = "Minimal"
+    }
+    Write-Turbo -Level ok -Message ("theme={0} quiet={1}" -f $script:ThemeMode, $script:QuietMode)
 }
 
 function Invoke-SupportLinks {
@@ -1575,53 +1805,45 @@ function Install-Optimizations {
     if (-not $SkipHistory) {
         Save-TurboHistorySnapshot -Reason "before-install-$Mode"
     }
-    Write-Host "`n$($t.gpu_detect)" -ForegroundColor Cyan
-    # Verification lecture seule : refuse d'optimiser sans GPU NVIDIA visible
-    $gpu = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -like "*NVIDIA*" -and $_.Name -notlike "*Audio*" } | Select-Object -First 1
-
-    if (-not $gpu) {
-        Write-Error $t.gpu_none
+    Write-Turbo -Level verbose -Message $t.gpu_detect
+    if (-not (Test-NvidiaGpuOrExplain -OpenLinks:(-not $script:QuietMode))) {
+        $script:LastExitHint = 2
         return
     }
 
-    $vramGB = [math]::Round($gpu.AdapterRAM / 1GB, 1)
-    if ($vramGB -le 4) {
-        # Fallback registre : Win32 AdapterRAM est souvent tronque a 4 Go sur les grosses cartes
-        try {
-            $regPath = "HKLM:\SYSTEM\ControlSet001\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000"
-            $qwMemorySize = (Get-ItemProperty -Path $regPath -Name "HardwareInformation.qwMemorySize" -ErrorAction SilentlyContinue)."HardwareInformation.qwMemorySize"
-            if ($qwMemorySize) {
-                $vramGB = [math]::Round($qwMemorySize / 1GB, 1)
-            }
-        } catch {}
-    }
+    $gpuInfo = Get-DetectedGpuVendor
+    $vramGB = $null
+    try {
+        $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+        $n = 0.0
+        if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vramGB = [math]::Round($n / 1024.0, 1) }
+    } catch {}
+    if (-not $vramGB) { $vramGB = "?" }
 
-    Write-Host ($t.gpu_found -f $gpu.Name, $vramGB) -ForegroundColor Green
+    Write-Turbo -Level ok -Message ($t.gpu_found -f $gpuInfo.Name, $vramGB)
 
     if ($Mode -eq "context") {
-        Write-Host $t.mode_context -ForegroundColor Magenta
+        Write-Turbo -Level verbose -Message $t.mode_context
     } else {
-        Write-Host $t.mode_speed -ForegroundColor Magenta
+        Write-Turbo -Level verbose -Message $t.mode_speed
     }
-    Write-Host $t.applying -ForegroundColor Cyan
+    Write-Turbo -Level verbose -Message $t.applying
 
     if ($Mode -eq "context") {
-        # Turbo Contexte : Flash Attention ON + KV q8_0 (economie VRAM contexte)
         Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType 'q8_0' -HostBind '127.0.0.1:11434'
-        Write-Host $t.fa_set -ForegroundColor Green
-        Write-Host $t.kv_set -ForegroundColor Green
+        Write-Turbo -Level ok -Message $t.fa_set
+        Write-Turbo -Level ok -Message $t.kv_set
     } else {
-        # Turbo Vitesse : Flash Attention ON, KV laisse en FP16 (pas de q8_0)
         Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType $null -HostBind '127.0.0.1:11434'
-        Write-Host $t.fa_set -ForegroundColor Green
-        Write-Host $t.kv_clear -ForegroundColor Yellow
+        Write-Turbo -Level ok -Message $t.fa_set
+        Write-Turbo -Level warn -Message $t.kv_clear
     }
-    Write-Host $t.host_set -ForegroundColor Green
+    Write-Turbo -Level ok -Message $t.host_set
+    Write-Turbo -Level ok -Message ("install-{0} applied" -f $Mode)
 
-    Write-Host $t.vars_applied -ForegroundColor Green
     Save-TurboWatchdogState -Mode $Mode
     Restart-Ollama -WaitReady
-    Show-Status
+    if (-not $script:QuietMode) { Show-Status }
     $toastTitle = if ($Mode -eq "context") { "Turbo Context actif" } else { "Turbo Pure Speed actif" }
     $toastBody = if ($Mode -eq "context") { "FA + KV q8_0 — ~50% VRAM contexte" } else { "Flash Attention seul — KV FP16" }
     Show-TurboNotification -Title $toastTitle -Body $toastBody -Force:$Notify
@@ -2866,30 +3088,52 @@ function Resolve-MultiBenchmarkModels {
     return $picked
 }
 
+function Exit-Turbo {
+    param([int]$Code = 0)
+    if ($script:LastExitHint -eq 2) { $Code = 2 }
+    exit $Code
+}
+
 # Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / fenetre bench
-if ($Action -eq "install" -or $Action -eq "install-context") { Install-Optimizations -Mode "context"; Exit }
-if ($Action -eq "install-speed") { Install-Optimizations -Mode "speed"; Exit }
-if ($Action -eq "restore") { Restore-Defaults; Exit }
-if ($Action -eq "status")  { Show-Status; Exit }
+if ($Action -eq "install" -or $Action -eq "install-context") {
+    $script:LastExitHint = 0
+    Install-Optimizations -Mode "context"
+    Exit-Turbo
+}
+if ($Action -eq "install-speed") {
+    $script:LastExitHint = 0
+    Install-Optimizations -Mode "speed"
+    Exit-Turbo
+}
+if ($Action -eq "restore") { Restore-Defaults; Exit-Turbo }
+if ($Action -eq "status")  { Show-Status; Exit-Turbo }
+if ($Action -eq "gpu-check") {
+    $g = Get-DetectedGpuVendor
+    if ($g.Supported) { Write-Turbo -Level ok -Message ("gpu vendor=NVIDIA name={0}" -f $g.Name); Exit-Turbo 0 }
+    [void](Show-UnsupportedGpuMessage -GpuInfo $g); Exit-Turbo 2
+}
 if ($Action -eq "bench") {
+    if (-not (Test-NvidiaGpuOrExplain)) { Exit-Turbo 2 }
     Run-Benchmark -ForcedModel $Model -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
     Stop-BenchmarkHost
 }
 if ($Action -eq "bench-multi") {
+    if (-not (Test-NvidiaGpuOrExplain)) { Exit-Turbo 2 }
     Run-Benchmark -MultiModel -ForcedModelsCsv $Models -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
     Stop-BenchmarkHost
 }
-if ($Action -eq "health")  { Invoke-HealthCheck; Exit }
-if ($Action -eq "smart")   { Invoke-SmartGpuPreset; Exit }
-if ($Action -eq "vram")    { Show-VramContextEstimate; Exit }
-if ($Action -eq "watchdog") { Invoke-TurboWatchdogCheck -Repair; Exit }
-if ($Action -eq "watchdog-install") { Install-TurboWatchdogTask; Exit }
-if ($Action -eq "watchdog-remove") { Remove-TurboWatchdogTask; Exit }
+if ($Action -eq "health")  { Invoke-HealthCheck; Exit-Turbo }
+if ($Action -eq "smart")   { Invoke-SmartGpuPreset; Exit-Turbo }
+if ($Action -eq "vram")    { Show-VramContextEstimate; Exit-Turbo }
+if ($Action -eq "watchdog") { Invoke-TurboWatchdogCheck -Repair; Exit-Turbo }
+if ($Action -eq "watchdog-install") { Install-TurboWatchdogTask; Exit-Turbo }
+if ($Action -eq "watchdog-remove") { Remove-TurboWatchdogTask; Exit-Turbo }
 
 # Boucle menu interactive
 do {
     Initialize-MenuConsole
-    Write-Host @'
+    if ($script:ThemeMode -eq "Full" -and -not $script:QuietMode) {
+        Write-Host @'
         ____
       .'    '.     _ _                        _____ _
      /  o  o  \   | | | __ _ _ __ ___   __ _ |_   _| |_ _ __ _ __   ___
@@ -2898,10 +3142,20 @@ do {
       '.____.'    |_|_|\__,_|_| |_| |_|\__,_|  \_/  \__,_|  |_.__/ \___/
       Multi-Language 1-Click Optimizer (RTX 30 / 40 / 50 Series)
 '@ -ForegroundColor Cyan
-    Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
-    Write-Host "      Star the repo  |  buymeacoffee.com/masterm3u" -ForegroundColor DarkYellow
+        Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
+        Write-Host "      Star the repo  |  buymeacoffee.com/masterm3u" -ForegroundColor DarkYellow
+    } else {
+        Write-Host " Ollama-Turbo-RTX  [$($script:ThemeMode)]" -ForegroundColor Cyan
+    }
 
-    # Check silencieux si watchdog configure (flags perdus apres reboot)
+    # GPU non NVIDIA : message clair une fois (pas de force silencieuse)
+    $bootGpu = Get-DetectedGpuVendor
+    if (-not $bootGpu.Supported) {
+        [void](Show-UnsupportedGpuMessage -GpuInfo $bootGpu -OpenLinks:$false)
+        Write-Host "  Les options [1]/[2]/[4]/[M] necessitent un GPU NVIDIA RTX." -ForegroundColor Yellow
+        Write-Host ""
+    }
+
     try { Invoke-TurboWatchdogCheck -Silent } catch {}
 
     Show-Status
@@ -2910,20 +3164,21 @@ do {
     $choice = Read-Host $t.prompt_choice
 
     switch -Regex ($choice) {
-        '^1$' { Install-Optimizations -Mode "context"; Pause }
-        '^2$' { Install-Optimizations -Mode "speed"; Pause }
-        '^3$' { Restore-Defaults; Pause }
-        '^4$' { Start-BenchmarkWindow; Pause }
+        '^1$' { Install-Optimizations -Mode "context"; if (-not $script:QuietMode) { Pause } }
+        '^2$' { Install-Optimizations -Mode "speed"; if (-not $script:QuietMode) { Pause } }
+        '^3$' { Restore-Defaults; if (-not $script:QuietMode) { Pause } }
+        '^4$' { Start-BenchmarkWindow; if (-not $script:QuietMode) { Pause } }
         '^5$' { Select-Language }
-        '^6$' { Invoke-HealthCheck; Pause }
-        '^7$' { Invoke-SmartGpuPreset; Pause }
-        '^8$' { Invoke-WorkflowPreset; Pause }
-        '^9$' { Invoke-HistoryRestore; Pause }
-        '^[Aa]$' { Show-VramContextEstimate; Pause }
-        '^[Mm]$' { Start-BenchmarkWindow -MultiModel; Pause }
-        '^[Ww]$' { Invoke-WatchdogMenu; Pause }
-        '^[Ss]$' { Invoke-SupportLinks; Pause }
-        '^[Qq]$' { Exit }
+        '^6$' { Invoke-HealthCheck; if (-not $script:QuietMode) { Pause } }
+        '^7$' { Invoke-SmartGpuPreset; if (-not $script:QuietMode) { Pause } }
+        '^8$' { Invoke-WorkflowPreset; if (-not $script:QuietMode) { Pause } }
+        '^9$' { Invoke-HistoryRestore; if (-not $script:QuietMode) { Pause } }
+        '^[Aa]$' { Show-VramContextEstimate; if (-not $script:QuietMode) { Pause } }
+        '^[Mm]$' { Start-BenchmarkWindow -MultiModel; if (-not $script:QuietMode) { Pause } }
+        '^[Ww]$' { Invoke-WatchdogMenu; if (-not $script:QuietMode) { Pause } }
+        '^[Ss]$' { Invoke-SupportLinks; if (-not $script:QuietMode) { Pause } }
+        '^[Tt]$' { Invoke-ThemeToggle }
+        '^[Qq]$' { Exit-Turbo 0 }
         default { Write-Warning "Invalid option." }
     }
 } while ($choice -notmatch '^[Qq]$')
