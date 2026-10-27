@@ -1,4 +1,4 @@
-# Ollama-Turbo-RTX — Enable Flash Attention & Q8 KV Cache on Windows (NVIDIA RTX)
+# Ollama-Turbo-RTX — Boost Ollama on Windows RTX (+30% Speed, -50% VRAM in 1 Click)
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/Platform-Windows%2010%2F11-0078D6?logo=windows)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
