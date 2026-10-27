@@ -1039,6 +1039,7 @@ function Invoke-HealthCheck {
     Write-Host ("=" * 60) -ForegroundColor DarkGray
 
     $pendingUpdate = $null
+    $pendingNvidia = $null
     $ollamaCmd = Get-Command "ollama" -ErrorAction SilentlyContinue
     $localVerObj = $null
     if ($ollamaCmd) {
@@ -1103,13 +1104,13 @@ function Invoke-HealthCheck {
                         Write-Host "  [!!] NVIDIA DRIVER UPDATE AVAILABLE" -ForegroundColor Yellow
                         Write-Host ("       installed : {0}" -f $nv.Installed) -ForegroundColor Yellow
                         Write-Host ("       latest    : {0}  ({1}, {2})" -f $nv.Latest, $nv.Released, $nv.Size) -ForegroundColor Yellow
-                        Write-Host "       (pas de DL PowerShell — ouvre le lien dans ton navigateur)" -ForegroundColor DarkGray
                         if ($nv.DownloadUrl) {
                             Write-Host ("       download  : {0}" -f $nv.DownloadUrl) -ForegroundColor Cyan
                         }
                         if ($nv.DetailsUrl) {
                             Write-Host ("       details   : {0}" -f $nv.DetailsUrl) -ForegroundColor DarkGray
                         }
+                        $pendingNvidia = $nv
                     } else {
                         Write-Host ("  [OK] NVIDIA driver UP TO DATE  (installed {0} = latest {1})" -f $nv.Installed, $nv.Latest) -ForegroundColor Green
                     }
@@ -1150,7 +1151,43 @@ function Invoke-HealthCheck {
     Write-Host ("  [--] Machine FA={0}  KV={1}" -f $(if ($fa) { $fa } else { "(unset)" }), $(if ($kv) { $kv } else { "(unset)" })) -ForegroundColor DarkGray
     Write-Host ("=" * 60) -ForegroundColor DarkGray
 
-    # Demande de mise a jour APRES le rapport complet (sinon le prompt passe inapercu)
+    # --- NVIDIA : Y ouvre le navigateur (aucun DL PowerShell), N continue ---
+    if ($pendingNvidia) {
+        Write-Host ""
+        Write-Host "  ======================================================" -ForegroundColor Yellow
+        Write-Host "   DRIVER NVIDIA — MISE A JOUR DISPONIBLE" -ForegroundColor Yellow
+        Write-Host ("   Installe / Installed : {0}" -f $pendingNvidia.Installed) -ForegroundColor White
+        Write-Host ("   Derniere / Latest    : {0}  ({1})" -f $pendingNvidia.Latest, $pendingNvidia.Size) -ForegroundColor White
+        Write-Host "  ======================================================" -ForegroundColor Yellow
+        Write-Host "  [Y] Oui / Yes  — ouvrir le lien web (telechargement navigateur)" -ForegroundColor Green
+        Write-Host "  [N] Non / No   — ignorer et continuer" -ForegroundColor DarkGray
+        Write-Host ""
+        try {
+            $nvChoice = [string](Read-Host "  Votre choix / Your choice (Y/N)").Trim()
+        } catch {
+            $nvChoice = "N"
+        }
+        if ($nvChoice -match '^(o|oui|y|yes)$') {
+            $openUrl = if ($pendingNvidia.DownloadUrl) { $pendingNvidia.DownloadUrl } else { $pendingNvidia.DetailsUrl }
+            if ($openUrl) {
+                Write-Host "  [*] Ouverture du navigateur..." -ForegroundColor Cyan
+                Write-Host "      $openUrl" -ForegroundColor DarkGray
+                try {
+                    Start-Process $openUrl
+                    Write-Host "  [OK] Lien ouvert — telecharge et installe depuis le navigateur." -ForegroundColor Green
+                } catch {
+                    Write-Host "  [!!] Impossible d'ouvrir le navigateur: $($_.Exception.Message)" -ForegroundColor Red
+                    Write-Host "      Copie ce lien manuellement: $openUrl" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "  [!!] Pas d'URL de telechargement — ouvre: https://www.nvidia.com/Download/index.aspx" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  [--] Mise a jour driver ignoree — on continue." -ForegroundColor DarkGray
+        }
+    }
+
+    # --- Ollama : Y lance l'installateur (curl), N continue ---
     if ($pendingUpdate) {
         Write-Host ""
         Write-Host "  ======================================================" -ForegroundColor Yellow
