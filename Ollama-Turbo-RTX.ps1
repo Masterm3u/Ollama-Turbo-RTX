@@ -5,11 +5,22 @@
 #   1) Variables d'environnement Machine : OLLAMA_FLASH_ATTENTION, OLLAMA_KV_CACHE_TYPE, OLLAMA_HOST
 #   2) Redemarrage des process locaux ollama / llama-server (libere la VRAM)
 #   3) Appels API locaux uniquement : http://127.0.0.1:11434 (benchmark)
-# Il n'installe aucun .exe tiers, n'envoie aucune telemetrie, ne touche pas au registre hors env Machine.
+#   4) Watchdog optionnel (tache planifiee logon) pour reappliquer les flags apres reboot
+# CLI exemples :
+#   .\Ollama-Turbo-RTX.ps1 -Action install-context -Notify
+#   .\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 16384 -Out report.json
+#   .\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Out multi.json
+#   .\Ollama-Turbo-RTX.ps1 -Action vram
+#   .\Ollama-Turbo-RTX.ps1 -Action watchdog-install
 # =============================================================================
 param (
-    [string]$Action = "",   # install | install-speed | restore | status | bench (mode CLI)
-    [string]$Lang = ""      # en | fr | es | de — sinon auto-detect OS
+    [string]$Action = "",   # install-context | install-speed | restore | status | bench | bench-multi | health | vram | watchdog | watchdog-install | watchdog-remove
+    [string]$Lang = "",     # en | fr | es | de — sinon auto-detect OS
+    [string]$Model = "",    # bench CLI : modele unique (ex. llama3.1:8b)
+    [string]$Models = "",   # bench-multi CLI : "7b,14b,32b" ou noms separes par virgule
+    [int]$Ctx = 0,          # bench CLI : num_ctx (ex. 16384)
+    [string]$Out = "",      # bench CLI : chemin rapport .json / .txt
+    [switch]$Notify         # toasts Windows (install / bench / watchdog)
 )
 
 # Affichage UTF-8 pour accents / bandeau ASCII dans la console Windows
@@ -104,8 +115,11 @@ $i18n = @{
         opt_7          = "  [7] Smart GPU Preset (auto by VRAM)"
         opt_8          = "  [8] Workflow Preset: Coding (Cursor) or Fast Chat"
         opt_9          = "  [9] Undo / Restore from history snapshot"
+        opt_a          = "  [A] VRAM context estimate (FP16 vs Q8)"
+        opt_m          = "  [M] Multi-model benchmark (7B / 14B / 32B)"
+        opt_w          = "  [W] Watchdog after reboot (install / check / remove)"
         opt_q          = "  [Q] Exit"
-        prompt_choice  = "Enter your choice (1-9 or Q)"
+        prompt_choice  = "Enter your choice (1-9, A, M, W or Q)"
         support_tip    = "  Star the repo + Buy me a coffee: buymeacoffee.com/masterm3u"
         health_title   = " SYSTEM HEALTH CHECK"
         smart_title    = " SMART GPU PRESET"
@@ -204,8 +218,11 @@ $i18n = @{
         opt_7          = "  [7] Preset GPU intelligent (auto selon VRAM)"
         opt_8          = "  [8] Preset workflow : Coding (Cursor) ou Chat rapide"
         opt_9          = "  [9] Annuler / Restaurer un snapshot d'historique"
+        opt_a          = "  [A] Estimation VRAM contexte (FP16 vs Q8)"
+        opt_m          = "  [M] Benchmark multi-modeles (7B / 14B / 32B)"
+        opt_w          = "  [W] Watchdog apres reboot (installer / verifier / retirer)"
         opt_q          = "  [Q] Quitter"
-        prompt_choice  = "Entrez votre choix (1-9 ou Q)"
+        prompt_choice  = "Entrez votre choix (1-9, A, M, W ou Q)"
         support_tip    = "  Etoile GitHub + cafe : buymeacoffee.com/masterm3u"
         health_title   = " DIAGNOSTIC SYSTEME"
         smart_title    = " PRESET GPU INTELLIGENT"
@@ -441,6 +458,11 @@ function Check-Admin {
         $arg = "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$targetPath`""
         if ($Action) { $arg += " -Action `"$Action`"" }
         if ($CurrentLang) { $arg += " -Lang `"$CurrentLang`"" }
+        if ($Model) { $arg += " -Model `"$Model`"" }
+        if ($Models) { $arg += " -Models `"$Models`"" }
+        if ($Ctx -gt 0) { $arg += " -Ctx $Ctx" }
+        if ($Out) { $arg += " -Out `"$Out`"" }
+        if ($Notify) { $arg += " -Notify" }
         Start-Process powershell.exe -ArgumentList $arg -Verb RunAs
     }
     Exit
@@ -1454,6 +1476,9 @@ function Show-Menu {
     Write-Host $t.opt_7
     Write-Host $t.opt_8
     Write-Host $t.opt_9
+    if ($t.opt_a) { Write-Host $t.opt_a }
+    if ($t.opt_m) { Write-Host $t.opt_m }
+    if ($t.opt_w) { Write-Host $t.opt_w }
     Write-Host $t.opt_q
     Write-Host ""
     Write-Host $t.support_tip -ForegroundColor DarkYellow
@@ -1517,8 +1542,12 @@ function Install-Optimizations {
     Write-Host $t.host_set -ForegroundColor Green
 
     Write-Host $t.vars_applied -ForegroundColor Green
+    Save-TurboWatchdogState -Mode $Mode
     Restart-Ollama -WaitReady
     Show-Status
+    $toastTitle = if ($Mode -eq "context") { "Turbo Context actif" } else { "Turbo Pure Speed actif" }
+    $toastBody = if ($Mode -eq "context") { "FA + KV q8_0 — ~50% VRAM contexte" } else { "Flash Attention seul — KV FP16" }
+    Show-TurboNotification -Title $toastTitle -Body $toastBody -Force:$Notify
 }
 
 # MENU [3] — efface tous les flags Turbo (retour Ollama stock) puis redemarre
@@ -1527,14 +1556,17 @@ function Restore-Defaults {
     Save-TurboHistorySnapshot -Reason "before-rollback-stock"
     Write-Host "`n$($t.revert_title)" -ForegroundColor Cyan
     Sync-OllamaProcessEnv -FlashAttention $null -KvCacheType $null -HostBind $null
+    Save-TurboWatchdogState -Mode "stock"
 
     Write-Host $t.revert_ok -ForegroundColor Yellow
     Restart-Ollama -WaitReady
     Show-Status
+    Show-TurboNotification -Title "Ollama Stock" -Body "Flags Turbo retires." -Force:$Notify
 }
 
-# MENU [4] — ouvre une fenetre Admin separee qui execute -Action bench (UAC)
+# MENU [4]/[M] — ouvre une fenetre Admin separee qui execute -Action bench / bench-multi
 function Start-BenchmarkWindow {
+    param([switch]$MultiModel)
     $scriptPath = Get-ScriptPath
     if (-not $scriptPath -or -not (Test-Path $scriptPath)) {
         Write-Warning $t.bench_window_fail
@@ -1545,9 +1577,14 @@ function Start-BenchmarkWindow {
         "-NoProfile"
         "-ExecutionPolicy", "Bypass"
         "-File", $scriptPath
-        "-Action", "bench"
+        "-Action", $(if ($MultiModel) { "bench-multi" } else { "bench" })
         "-Lang", $CurrentLang
     )
+    if ($Model) { $argList += @("-Model", $Model) }
+    if ($Models) { $argList += @("-Models", $Models) }
+    if ($Ctx -gt 0) { $argList += @("-Ctx", "$Ctx") }
+    if ($Out) { $argList += @("-Out", $Out) }
+    if ($Notify) { $argList += "-Notify" }
 
     try {
         Start-Process -FilePath "powershell.exe" -ArgumentList $argList -Verb RunAs -ErrorAction Stop | Out-Null
@@ -1894,6 +1931,14 @@ function Initialize-BenchConsole {
 # MENU [4] / -Action bench — compare Stock vs FA vs FA+Q8 (moyenne de 3 passes chacune)
 # Modifie temporairement les flags Machine pendant le test, puis RESTAURE l'etat initial.
 function Run-Benchmark {
+    param(
+        [string]$ForcedModel = "",
+        [int]$ForcedCtx = 0,
+        [string]$OutPath = "",
+        [switch]$MultiModel,
+        [string]$ForcedModelsCsv = "",
+        [switch]$NotifyAfter
+    )
     Check-Admin
     Initialize-BenchConsole
     Write-Host $t.bench_admin_ok -ForegroundColor Green
@@ -1921,32 +1966,47 @@ function Run-Benchmark {
         Restart-Ollama -WaitReady
     }
 
-    $modelInfo = Select-BenchmarkModel
-    $testModel = $modelInfo.Name
-    $benchCtx = if ($modelInfo.Ctx -and $modelInfo.Ctx -gt 0) { [int]$modelInfo.Ctx } else { 8192 }
-    # Echantillon pour afficher la taille ; chaque passe regenere un prompt UNIQUE (anti-cache)
-    $samplePrompt = New-HeavyStressPrompt
-    Write-Host ($t.bench_model -f $testModel, $modelInfo.SizeLabel) -ForegroundColor Green
-    Write-Host ($t.bench_ctx -f $benchCtx) -ForegroundColor DarkGray
-    Write-Host ($t.bench_prompt_info -f $samplePrompt.Length) -ForegroundColor DarkGray
-    Write-Host "  [*] Prompt regenere a chaque passe (~5k tokens uniques) + keep_alive=0" -ForegroundColor DarkGray
+    # Liste de modeles a tester (1 = classique, N = multi 7B/14B/32B)
+    $modelQueue = @()
+    if ($MultiModel -or $ForcedModelsCsv) {
+        $modelQueue = @(Resolve-MultiBenchmarkModels -ModelsCsv $ForcedModelsCsv)
+        if ($modelQueue.Count -eq 0) {
+            Write-Host "[!!] Aucun modele 7B/14B/32B trouve localement. Pull puis reessayez." -ForegroundColor Red
+            return
+        }
+        Write-Host ("  [*] Multi-modeles : {0}" -f (($modelQueue | ForEach-Object { $_.Name }) -join ' | ')) -ForegroundColor Cyan
+    } elseif ($ForcedModel) {
+        $modelQueue = @(@{ Name = $ForcedModel; SizeLabel = $ForcedModel; Ctx = $(if ($ForcedCtx -gt 0) { $ForcedCtx } else { 8192 }) })
+    } else {
+        $modelInfo = Select-BenchmarkModel
+        $ctxSel = if ($ForcedCtx -gt 0) { $ForcedCtx } elseif ($modelInfo.Ctx -gt 0) { [int]$modelInfo.Ctx } else { 8192 }
+        $modelQueue = @(@{ Name = $modelInfo.Name; SizeLabel = $modelInfo.SizeLabel; Ctx = $ctxSel })
+    }
 
-    # Pour UN mode donne : 1 warm-up (ignore) + 3 generations chronometrees → moyenne t/s
+    $passCount = if ($modelQueue.Count -gt 1) { 2 } else { 3 }  # multi: 2 passes pour rester raisonnable
+    $multiRows = @()
+
+    # Pour UN mode donne : 1 warm-up + N generations chronometrees → moyenne t/s
     function Execute-3Passes {
-        param([string]$PhaseName)
-        Write-Host "`n[*] $PhaseName (3 passes en cours)..." -ForegroundColor Yellow
-        Write-Host "  [*] Cache bust: New-HeavyStressPrompt() + keep_alive=0 (attention O(N^2) reelle)" -ForegroundColor DarkGray
+        param(
+            [string]$PhaseName,
+            [string]$ModelName,
+            [int]$NumCtx,
+            [int]$TimedPasses = 3
+        )
+        Write-Host "`n[*] $PhaseName ($TimedPasses passes)..." -ForegroundColor Yellow
+        Write-Host "  [*] Cache bust: New-HeavyStressPrompt() + keep_alive=0" -ForegroundColor DarkGray
 
         Write-Host "  $($t.bench_warmup)" -ForegroundColor DarkGray
         $warmPrompt = New-HeavyStressPrompt
-        $warm = Invoke-OllamaGenerateStats -Model $testModel -Prompt $warmPrompt -NumPredict 16 -NumCtx $benchCtx -KeepAlive 0
+        $warm = Invoke-OllamaGenerateStats -Model $ModelName -Prompt $warmPrompt -NumPredict 16 -NumCtx $NumCtx -KeepAlive 0
         if (-not $warm.Ok) {
             if ($warm.Oom) {
                 Write-Host "  $($t.bench_oom)" -ForegroundColor Yellow
                 Clear-OllamaGpuRunners
                 Restart-Ollama -WaitReady
                 $warmPrompt = New-HeavyStressPrompt
-                $warm = Invoke-OllamaGenerateStats -Model $testModel -Prompt $warmPrompt -NumPredict 16 -NumCtx $benchCtx -KeepAlive 0
+                $warm = Invoke-OllamaGenerateStats -Model $ModelName -Prompt $warmPrompt -NumPredict 16 -NumCtx $NumCtx -KeepAlive 0
             }
             if (-not $warm.Ok) {
                 Write-Host ("  " + ($t.bench_api_fail -f $warm.Error)) -ForegroundColor Red
@@ -1957,14 +2017,11 @@ function Run-Benchmark {
         $pRates = @()
         $eRates = @()
 
-        for ($i = 1; $i -le 3; $i++) {
-            Write-Host "  -> Passe $i/3..." -NoNewline -ForegroundColor Gray
-
-            # Texte massif entierement regeneré : aucun prefixe commun = pas de Prompt Cache Hit
+        for ($i = 1; $i -le $TimedPasses; $i++) {
+            Write-Host "  -> Passe $i/$TimedPasses..." -NoNewline -ForegroundColor Gray
             $realPrompt = New-HeavyStressPrompt
-
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            $stats = Invoke-OllamaGenerateStats -Model $testModel -Prompt $realPrompt -NumPredict 128 -NumCtx $benchCtx -KeepAlive 0
+            $stats = Invoke-OllamaGenerateStats -Model $ModelName -Prompt $realPrompt -NumPredict 128 -NumCtx $NumCtx -KeepAlive 0
             $sw.Stop()
 
             if (-not $stats.Ok -and $stats.Oom) {
@@ -1973,7 +2030,7 @@ function Run-Benchmark {
                 Restart-Ollama -WaitReady
                 $realPrompt = New-HeavyStressPrompt
                 $sw.Restart()
-                $stats = Invoke-OllamaGenerateStats -Model $testModel -Prompt $realPrompt -NumPredict 128 -NumCtx $benchCtx -KeepAlive 0
+                $stats = Invoke-OllamaGenerateStats -Model $ModelName -Prompt $realPrompt -NumPredict 128 -NumCtx $NumCtx -KeepAlive 0
                 $sw.Stop()
             }
 
@@ -1984,13 +2041,10 @@ function Run-Benchmark {
 
             if ($stats.Prompt -gt 0) { $pRates += $stats.Prompt }
             if ($stats.Eval -gt 0) { $eRates += $stats.Eval }
-
-            Write-Host " OK ($([math]::Round($sw.Elapsed.TotalSeconds, 2))s) | Prompt: $($stats.Prompt) t/s | Gen: $($stats.Eval) t/s | chars=$($realPrompt.Length)" -ForegroundColor DarkGray
+            Write-Host " OK ($([math]::Round($sw.Elapsed.TotalSeconds, 2))s) | Prompt: $($stats.Prompt) t/s | Gen: $($stats.Eval) t/s" -ForegroundColor DarkGray
         }
 
-        # Purge totale avant le mode suivant (Stock / Vitesse / Contexte)
         Clear-OllamaGpuRunners
-
         $avgP = if ($pRates.Count -gt 0) { [math]::Round(($pRates | Measure-Object -Average).Average, 2) } else { 0 }
         $avgE = if ($eRates.Count -gt 0) { [math]::Round(($eRates | Measure-Object -Average).Average, 2) } else { 0 }
         return @{ Prompt = $avgP; Eval = $avgE }
@@ -2015,133 +2069,141 @@ function Run-Benchmark {
         return "Yellow"
     }
 
-    # ----- Phase 1/3 : reference Windows stock (pas de FA, pas de Q8) -----
-    Write-Host "`n>>> ETAPE 1/3 : STOCK (aucune optimisation)..." -ForegroundColor Cyan
-    Sync-OllamaProcessEnv -FlashAttention $null -KvCacheType $null -HostBind '127.0.0.1:11434'
-    Clear-OllamaGpuRunners
-    Restart-Ollama -WaitReady
-    $resStock = Execute-3Passes -PhaseName "Mesure Mode STOCK"
-
-    # ----- Phase 2/3 : Flash Attention seul (KV FP16) -----
-    Write-Host "`n>>> ETAPE 2/3 : TURBO VITESSE PURE (Flash Attention seul)..." -ForegroundColor Cyan
-    Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType $null -HostBind '127.0.0.1:11434'
-    Clear-OllamaGpuRunners
-    Restart-Ollama -WaitReady
-    $resSpeed = Execute-3Passes -PhaseName "Mesure Mode TURBO VITESSE PURE"
-
-    # ----- Phase 3/3 : Flash Attention + KV q8_0 -----
-    Write-Host "`n>>> ETAPE 3/3 : TURBO CONTEXTE (Flash Attention + Q8)..." -ForegroundColor Cyan
-    Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType 'q8_0' -HostBind '127.0.0.1:11434'
-    Clear-OllamaGpuRunners
-    Restart-Ollama -WaitReady
-    $resContext = Execute-3Passes -PhaseName "Mesure Mode TURBO CONTEXTE"
-
-    # ----- Fin de mesure : remet EXACTEMENT les flags Machine d'avant le bench -----
-    Write-Host "`n[*] Restauration de l'etat initial de votre machine..." -ForegroundColor Cyan
-    Sync-OllamaProcessEnv -FlashAttention $origFA -KvCacheType $origKV -HostBind $origHost
-    Restart-Ollama -WaitReady
-
-    # Calcul des gains % vs Stock (moyennes des 3 passes)
-    $gainSpeedE = Get-GainPct -Base $resStock.Eval -Value $resSpeed.Eval
-    $gainCtxE   = Get-GainPct -Base $resStock.Eval -Value $resContext.Eval
-
-    $bestMode = "Stock"
-    $maxSpeed = $resStock.Eval
-    if ($resSpeed.Eval -gt $maxSpeed) {
-        $bestMode = "Turbo Vitesse (FA)"
-        $maxSpeed = $resSpeed.Eval
-    }
-    if ($resContext.Eval -gt $maxSpeed) {
-        $bestMode = "Turbo Contexte (FA + Q8)"
-        $maxSpeed = $resContext.Eval
-    }
-
-    $gainSpeedStr = if ($gainSpeedE -gt 0) { "+$gainSpeedE %" } else { "$gainSpeedE %" }
-    $gainCtxStr   = if ($gainCtxE -gt 0)   { "+$gainCtxE %" }   else { "$gainCtxE %" }
-    $badgeCtx     = if ($gainCtxE -gt 10)  { " [GAIN NET]" } else { "" }
-    $badgeSpeed   = if ($gainSpeedE -gt 10){ " [GAIN NET]" } else { "" }
-
     $hw = Get-SystemHwInfo
     $timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
     $sepLine = "=" * 82
-    $subLine = "-" * 82
+    $reportBlocks = @()
+    $testModel = $modelQueue[0].Name
+    $benchCtx = [int]$modelQueue[0].Ctx
+    $resStock = @{ Eval = 0; Prompt = 0 }
+    $resSpeed = @{ Eval = 0; Prompt = 0 }
+    $resContext = @{ Eval = 0; Prompt = 0 }
+    $gainSpeedE = 0; $gainCtxE = 0
+    $gainSpeedStr = "0 %"; $gainCtxStr = "0 %"
+    $bestMode = "Stock"
 
-    Write-Host ""
-    Write-Host $sepLine -ForegroundColor DarkGray
-    Write-Host " RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO" -ForegroundColor Cyan
-    Write-Host " Date     : $timestamp" -ForegroundColor DarkGray
-    Write-Host " Modele   : $testModel" -ForegroundColor DarkGray
-    Write-Host " Contexte : $benchCtx tokens" -ForegroundColor DarkGray
-    Write-Host " Methode  : 1 warm-up + 3 passes par mode ; t/s = moyenne des 3" -ForegroundColor DarkGray
-    Write-Host " GPU      : $($hw.Gpu)" -ForegroundColor Green
-    Write-Host " CPU      : $($hw.Cpu)" -ForegroundColor Green
-    Write-Host " RAM      : $($hw.Ram)" -ForegroundColor Green
-    Write-Host " Windows  : $($hw.Windows)" -ForegroundColor Green
-    Write-Host $sepLine -ForegroundColor DarkGray
-    Write-Host (" {0,-26} | {1,18} | {2,14} | {3,13} " -f "CONFIGURATION", "GENERATION (t/s)", "GAIN VITESSE", "GAIN VRAM") -ForegroundColor Yellow
-    Write-Host $subLine -ForegroundColor DarkGray
-    Write-Host "  (valeurs = moyenne de 3 essais apres warm-up)" -ForegroundColor DarkGray
+    $mi = 0
+    foreach ($mq in $modelQueue) {
+        $mi++
+        $testModel = $mq.Name
+        $benchCtx = if ($ForcedCtx -gt 0) { $ForcedCtx } elseif ($mq.Ctx -gt 0) { [int]$mq.Ctx } else { 8192 }
+        Write-Host ""
+        Write-Host $sepLine -ForegroundColor Magenta
+        Write-Host (" MODELE {0}/{1} : {2}  |  ctx={3}  |  {4}" -f $mi, $modelQueue.Count, $testModel, $benchCtx, $mq.SizeLabel) -ForegroundColor Magenta
+        Write-Host $sepLine -ForegroundColor Magenta
+        Write-Host ($t.bench_model -f $testModel, $mq.SizeLabel) -ForegroundColor Green
+        Write-Host ($t.bench_ctx -f $benchCtx) -ForegroundColor DarkGray
+        Write-Host "  [*] Passes chronometrees: $passCount (+ 1 warm-up) ; keep_alive=0" -ForegroundColor DarkGray
 
-    Write-Host (" {0,-26} | {1,14} t/s | {2,14} | {3,13} " -f "[Stock] Par defaut", [string]$resStock.Eval, "(Reference)", "Aucun (100%)") -ForegroundColor Gray
+        Write-Host "`n>>> ETAPE 1/3 : STOCK..." -ForegroundColor Cyan
+        Sync-OllamaProcessEnv -FlashAttention $null -KvCacheType $null -HostBind '127.0.0.1:11434'
+        Clear-OllamaGpuRunners
+        Restart-Ollama -WaitReady
+        $resStock = Execute-3Passes -PhaseName "STOCK" -ModelName $testModel -NumCtx $benchCtx -TimedPasses $passCount
 
-    $colorSpeed = if ($gainSpeedE -ge 0) { [ConsoleColor]::Green } else { [ConsoleColor]::Red }
-    Write-Host (" {0,-26} | {1,14} t/s | {2,14} | {3,13} " -f "[2] Turbo Vitesse (FA)", [string]$resSpeed.Eval, "$gainSpeedStr$badgeSpeed", "Aucun (100%)") -ForegroundColor $colorSpeed
+        Write-Host "`n>>> ETAPE 2/3 : TURBO VITESSE (FA)..." -ForegroundColor Cyan
+        Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType $null -HostBind '127.0.0.1:11434'
+        Clear-OllamaGpuRunners
+        Restart-Ollama -WaitReady
+        $resSpeed = Execute-3Passes -PhaseName "TURBO VITESSE" -ModelName $testModel -NumCtx $benchCtx -TimedPasses $passCount
 
-    $colorCtx = if ($gainCtxE -ge 0) { [ConsoleColor]::Green } else { [ConsoleColor]::Red }
-    Write-Host (" {0,-26} | {1,14} t/s | {2,14} | {3,13} " -f "[1] Turbo Contexte (FA+Q8)", [string]$resContext.Eval, "$gainCtxStr$badgeCtx", "-50 % VRAM") -ForegroundColor $colorCtx
+        Write-Host "`n>>> ETAPE 3/3 : TURBO CONTEXTE (FA+Q8)..." -ForegroundColor Cyan
+        Sync-OllamaProcessEnv -FlashAttention '1' -KvCacheType 'q8_0' -HostBind '127.0.0.1:11434'
+        Clear-OllamaGpuRunners
+        Restart-Ollama -WaitReady
+        $resContext = Execute-3Passes -PhaseName "TURBO CONTEXTE" -ModelName $testModel -NumCtx $benchCtx -TimedPasses $passCount
 
-    Write-Host $sepLine -ForegroundColor DarkGray
-    Write-Host " RECOMMANDATION SYSTEME :" -ForegroundColor Yellow
-    if ($bestMode -eq "Turbo Contexte (FA + Q8)") {
-        Write-Host " -> Activez l'option [1] Turbo Contexte (FA + Q8)" -ForegroundColor Green
-        Write-Host " -> Benefice direct : +$gainCtxE % de debit et la moitie de la memoire VRAM economisee !" -ForegroundColor White
-    } elseif ($bestMode -eq "Turbo Vitesse (FA)") {
-        Write-Host " -> Activez l'option [2] Turbo Vitesse Pure (FA seul)" -ForegroundColor Green
-        Write-Host " -> Benefice direct : Debit maximal sans compression de cache." -ForegroundColor White
-    } else {
-        Write-Host " -> Le mode [Stock] par defaut offre deja les meilleures performances sur ce modele." -ForegroundColor Yellow
+        $gainSpeedE = Get-GainPct -Base $resStock.Eval -Value $resSpeed.Eval
+        $gainCtxE   = Get-GainPct -Base $resStock.Eval -Value $resContext.Eval
+        $gainSpeedStr = if ($gainSpeedE -gt 0) { "+$gainSpeedE %" } else { "$gainSpeedE %" }
+        $gainCtxStr   = if ($gainCtxE -gt 0)   { "+$gainCtxE %" }   else { "$gainCtxE %" }
+        $bestMode = "Stock"
+        if ($resSpeed.Eval -gt $resStock.Eval) { $bestMode = "Turbo Vitesse (FA)" }
+        if ($resContext.Eval -gt [math]::Max($resStock.Eval, $resSpeed.Eval)) { $bestMode = "Turbo Contexte (FA + Q8)" }
+
+        Write-Host ""
+        Write-Host (" {0,-26} | {1,14} | {2,12}" -f "CONFIG", "GEN t/s", "GAIN") -ForegroundColor Yellow
+        Write-Host (" {0,-26} | {1,14} | {2,12}" -f "[Stock]", $resStock.Eval, "(ref)") -ForegroundColor Gray
+        Write-Host (" {0,-26} | {1,14} | {2,12}" -f "[FA]", $resSpeed.Eval, $gainSpeedStr) -ForegroundColor Green
+        Write-Host (" {0,-26} | {1,14} | {2,12}" -f "[FA+Q8]", $resContext.Eval, $gainCtxStr) -ForegroundColor Green
+        Write-Host ("  -> Meilleur: {0}" -f $bestMode) -ForegroundColor Cyan
+
+        $multiRows += [pscustomobject]@{
+            model = $testModel; ctx = $benchCtx
+            stock = $resStock.Eval; speed = $resSpeed.Eval; context = $resContext.Eval
+            gainSpeed = $gainSpeedE; gainCtx = $gainCtxE; best = $bestMode
+        }
+        $reportBlocks += @"
+
+--- $testModel (ctx $benchCtx) ---
+ Stock $($resStock.Eval) t/s | FA $($resSpeed.Eval) t/s ($gainSpeedStr) | FA+Q8 $($resContext.Eval) t/s ($gainCtxStr)
+ Best: $bestMode
+"@
     }
-    Write-Host $sepLine -ForegroundColor DarkGray
-    Write-Host ""
+
+    # Restauration flags Machine d'origine
+    Write-Host "`n[*] Restauration de l'etat initial de votre machine..." -ForegroundColor Cyan
+    Sync-OllamaProcessEnv -FlashAttention $origFA -KvCacheType $origKV -HostBind $origHost
+    Restart-Ollama -WaitReady
 
     $report = @"
 ================================================================================
  RAPPORT DE PERFORMANCE OLLAMA : STOCK vs TURBO
  Date     : $timestamp
- Modele   : $testModel
- Contexte : $benchCtx tokens
- Methode  : 1 warm-up + 3 passes par mode ; t/s = moyenne des 3 essais
+ Modeles  : $(($multiRows | ForEach-Object { $_.model }) -join ', ')
+ Methode  : 1 warm-up + $passCount passes / mode
  GPU      : $($hw.Gpu)
  CPU      : $($hw.Cpu)
  RAM      : $($hw.Ram)
  Windows  : $($hw.Windows)
 ================================================================================
- CONFIGURATION              GENERATION (Tokens/s)   GAIN VITESSE    GAIN VRAM
---------------------------------------------------------------------------------
- [Stock] Par defaut                 $($resStock.Eval) t/s       (Reference)      Aucun (100%)
- [2] Turbo Vitesse (FA)             $($resSpeed.Eval) t/s        $gainSpeedStr          Aucun (100%)
- [1] Turbo Contexte (FA + Q8)       $($resContext.Eval) t/s        $gainCtxStr          -50 % VRAM
-================================================================================
- Note : chaque t/s ci-dessus est la MOYENNE de 3 generations (apres 1 warm-up).
-        Prompt unique a chaque passe (anti-cache) + keep_alive=0.
-================================================================================
- RECOMMANDATION :
- -> Meilleure configuration detectee : $bestMode
+$($reportBlocks -join "`n")
 ================================================================================
 "@
 
-    $saveChoice = Read-HostWithTimeout -Prompt $t.bench_save_prompt -TimeoutSec 20 -DefaultValue "Y"
-    if ($saveChoice -match '^(o|oui|y|yes|s|si|j|ja)?$') {
-        Export-BenchmarkArtifacts `
-            -Timestamp $timestamp -TestModel $testModel -BenchCtx $benchCtx -Hw $hw `
-            -ResStock $resStock -ResSpeed $resSpeed -ResContext $resContext `
-            -GainSpeedE $gainSpeedE -GainCtxE $gainCtxE -BestMode $bestMode `
-            -GainSpeedStr $gainSpeedStr -GainCtxStr $gainCtxStr -TextReport $report
-        $latestTxt = Get-ChildItem ([Environment]::GetFolderPath("Desktop")) -Filter "Ollama_Turbo_Bench_*.txt" |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($latestTxt) { Start-Process notepad.exe -ArgumentList "`"$($latestTxt.FullName)`"" }
-        Start-Sleep -Seconds 1
+    Write-Host ""
+    Write-Host $sepLine -ForegroundColor DarkGray
+    Write-Host " RAPPORT MULTI / FINAL" -ForegroundColor Cyan
+    Write-Host $report -ForegroundColor White
+    Write-Host $sepLine -ForegroundColor DarkGray
+
+    # Export automatique si -Out, sinon prompt
+    $doSave = $false
+    if ($OutPath) {
+        $doSave = $true
+    } else {
+        $saveChoice = Read-HostWithTimeout -Prompt $t.bench_save_prompt -TimeoutSec 20 -DefaultValue "Y"
+        if ($saveChoice -match '^(o|oui|y|yes|s|si|j|ja)?$') { $doSave = $true }
     }
+
+    if ($doSave) {
+        if ($OutPath) {
+            $dir = Split-Path -Parent $OutPath
+            if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            if ($OutPath -match '\.json$') {
+                $jsonObj = [ordered]@{
+                    tool = "Ollama-Turbo-RTX"; timestamp = $timestamp; hardware = $hw
+                    passes = $passCount; results = $multiRows
+                }
+                ($jsonObj | ConvertTo-Json -Depth 6) | Set-Content -Path $OutPath -Encoding UTF8
+                Write-Host ("[OK] JSON: {0}" -f $OutPath) -ForegroundColor Green
+            } else {
+                $report | Set-Content -Path $OutPath -Encoding UTF8
+                Write-Host ("[OK] Report: {0}" -f $OutPath) -ForegroundColor Green
+            }
+        } else {
+            Export-BenchmarkArtifacts `
+                -Timestamp $timestamp -TestModel $testModel -BenchCtx $benchCtx -Hw $hw `
+                -ResStock $resStock -ResSpeed $resSpeed -ResContext $resContext `
+                -GainSpeedE $gainSpeedE -GainCtxE $gainCtxE -BestMode $bestMode `
+                -GainSpeedStr $gainSpeedStr -GainCtxStr $gainCtxStr -TextReport $report
+            $latestTxt = Get-ChildItem ([Environment]::GetFolderPath("Desktop")) -Filter "Ollama_Turbo_Bench_*.txt" |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($latestTxt -and -not $OutPath) { Start-Process notepad.exe -ArgumentList "`"$($latestTxt.FullName)`"" }
+        }
+    }
+
+    Show-TurboNotification -Title "Bench termine" -Body ("{0} modele(s) — meilleur: {1}" -f $modelQueue.Count, $bestMode) -Force:$NotifyAfter
 }
 
 function Stop-BenchmarkHost {
@@ -2214,19 +2276,365 @@ function Select-Language {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Notifications Windows (toast) — optionnel ; -Notify ou preference locale
+# ---------------------------------------------------------------------------
+function Get-TurboDataDir {
+    $d = Join-Path $env:LOCALAPPDATA "Ollama-Turbo-RTX"
+    if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+    return $d
+}
+
+function Test-NotifyEnabled {
+    param([switch]$Force)
+    if ($Force -or $Notify) { return $true }
+    $pref = Join-Path (Get-TurboDataDir) "notify.on"
+    return (Test-Path $pref)
+}
+
+function Set-NotifyPreference {
+    param([bool]$Enabled)
+    $pref = Join-Path (Get-TurboDataDir) "notify.on"
+    if ($Enabled) { "1" | Set-Content -Path $pref -Encoding ASCII }
+    else { Remove-Item $pref -Force -ErrorAction SilentlyContinue }
+}
+
+function Show-TurboNotification {
+    param(
+        [string]$Title,
+        [string]$Body,
+        [switch]$Force
+    )
+    if (-not (Test-NotifyEnabled -Force:$Force)) { return }
+    try {
+        # BurntToast si dispo, sinon toast XML WinRT, sinon balloon tray
+        if (Get-Module -ListAvailable -Name BurntToast) {
+            Import-Module BurntToast -ErrorAction SilentlyContinue
+            New-BurntToastNotification -Text $Title, $Body -ErrorAction SilentlyContinue
+            return
+        }
+        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+        [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+        $xml = @"
+<toast><visual><binding template="ToastGeneric">
+  <text>$([System.Security.SecurityElement]::Escape($Title))</text>
+  <text>$([System.Security.SecurityElement]::Escape($Body))</text>
+</binding></visual></toast>
+"@
+        $doc = New-Object Windows.Data.Xml.Dom.XmlDocument
+        $doc.LoadXml($xml)
+        $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
+        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Ollama-Turbo-RTX").Show($toast)
+    } catch {
+        try {
+            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+            $ni = New-Object System.Windows.Forms.NotifyIcon
+            $ni.Icon = [System.Drawing.SystemIcons]::Information
+            $ni.Visible = $true
+            $ni.ShowBalloonTip(4000, $Title, $Body, [System.Windows.Forms.ToolTipIcon]::Info)
+            Start-Sleep -Milliseconds 500
+            $ni.Dispose()
+        } catch {}
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Watchdog apres reboot — persiste le mode desire + tache planifiee au logon
+# ---------------------------------------------------------------------------
+function Get-TurboWatchdogStatePath { Join-Path (Get-TurboDataDir) "watchdog-state.json" }
+
+function Save-TurboWatchdogState {
+    param([ValidateSet("context", "speed", "stock")][string]$Mode)
+    $obj = [ordered]@{
+        mode      = $Mode
+        FA        = if ($Mode -eq "stock") { $null } elseif ($Mode) { "1" } else { $null }
+        KV        = if ($Mode -eq "context") { "q8_0" } else { $null }
+        Host      = if ($Mode -eq "stock") { $null } else { "127.0.0.1:11434" }
+        updatedAt = (Get-Date).ToString("o")
+    }
+    if ($Mode -eq "stock") { $obj.FA = $null; $obj.KV = $null; $obj.Host = $null }
+    ($obj | ConvertTo-Json) | Set-Content -Path (Get-TurboWatchdogStatePath) -Encoding UTF8
+}
+
+function Get-TurboWatchdogState {
+    $p = Get-TurboWatchdogStatePath
+    if (-not (Test-Path $p)) { return $null }
+    try { return Get-Content $p -Raw | ConvertFrom-Json } catch { return $null }
+}
+
+function Install-TurboWatchdogTask {
+    Check-Admin
+    $scriptPath = Get-ScriptPath
+    if (-not $scriptPath) {
+        # Copie durable pour la tache planifiee
+        $scriptPath = Join-Path (Get-TurboDataDir) "Ollama-Turbo-RTX.ps1"
+        Copy-Item -Path $PSCommandPath -Destination $scriptPath -Force -ErrorAction SilentlyContinue
+    } else {
+        $durable = Join-Path (Get-TurboDataDir) "Ollama-Turbo-RTX.ps1"
+        Copy-Item -Path $scriptPath -Destination $durable -Force -ErrorAction SilentlyContinue
+        $scriptPath = $durable
+    }
+    $mode = Get-ActiveTurboMode
+    Save-TurboWatchdogState -Mode $mode
+
+    $taskName = "Ollama-Turbo-RTX-Watchdog"
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    $arg = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$scriptPath`" -Action watchdog -Notify"
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Write-Host "[OK] Watchdog installé (tâche: $taskName) — vérifie les flags Machine à chaque connexion." -ForegroundColor Green
+    Write-Host "     Script: $scriptPath" -ForegroundColor DarkGray
+    Write-Host "     Mode cible: $mode" -ForegroundColor DarkGray
+    Show-TurboNotification -Title "Watchdog Turbo" -Body "Verification des flags activee au demarrage." -Force
+}
+
+function Remove-TurboWatchdogTask {
+    Check-Admin
+    Unregister-ScheduledTask -TaskName "Ollama-Turbo-RTX-Watchdog" -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "[OK] Watchdog retire." -ForegroundColor Yellow
+}
+
+function Invoke-TurboWatchdogCheck {
+    param(
+        [switch]$Silent,   # menu: alerte seule, pas de restart
+        [switch]$Repair    # tache planifiee / -Action watchdog: reapplique
+    )
+    $state = Get-TurboWatchdogState
+    if (-not $state) {
+        if (-not $Silent) { Write-Host "[--] Aucun etat watchdog — lancez [W] installer apres un mode Turbo." -ForegroundColor DarkGray }
+        return
+    }
+    $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
+    $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
+    $wantFA = [string]$state.FA
+    $wantKV = [string]$state.KV
+    $wantHost = [string]$state.Host
+    $ok = ($fa -eq $wantFA -or ([string]::IsNullOrEmpty($fa) -and [string]::IsNullOrEmpty($wantFA))) -and
+          ($kv -eq $wantKV -or ([string]::IsNullOrEmpty($kv) -and [string]::IsNullOrEmpty($wantKV)))
+    if ($ok) {
+        if (-not $Silent) {
+            Write-Host "[OK] Watchdog: flags Machine conformes (mode $($state.mode))." -ForegroundColor Green
+        }
+        return
+    }
+    Write-Host "[!!] Watchdog: flags perdus / non repris (mode voulu: $($state.mode))" -ForegroundColor Yellow
+    Write-Host "     FA Machine=$fa (voulu=$wantFA)  KV=$kv (voulu=$wantKV)" -ForegroundColor DarkGray
+    if (-not $Repair) {
+        Write-Host "     -> [W] verifier, ou: -Action watchdog (Admin) pour restaurer." -ForegroundColor DarkGray
+        return
+    }
+    if (-not (Test-IsAdmin)) {
+        Write-Host "[!] Admin requis pour reappliquer." -ForegroundColor Red
+        Show-TurboNotification -Title "Watchdog Turbo" -Body "Flags Turbo manquants — relancer en Admin." -Force
+        return
+    }
+    Write-Host "[*] Restauration des flags Machine..." -ForegroundColor Cyan
+    Sync-OllamaProcessEnv -FlashAttention $(if ($wantFA) { $wantFA } else { $null }) `
+        -KvCacheType $(if ($wantKV) { $wantKV } else { $null }) `
+        -HostBind $(if ($wantHost) { $wantHost } else { $null })
+    Restart-Ollama -WaitReady
+    Write-Host "[OK] Flags Turbo restaures (mode $($state.mode))." -ForegroundColor Green
+    Show-TurboNotification -Title "Watchdog Turbo" -Body "Flags restaures: $($state.mode)" -Force
+}
+
+function Invoke-WatchdogMenu {
+    Write-Host "`n WATCHDOG APRES REBOOT" -ForegroundColor Cyan
+    Write-Host "  Verifie que FA / KV Machine sont toujours la au demarrage." -ForegroundColor DarkGray
+    Write-Host "  [1] Installer / mettre a jour la tache planifiee" -ForegroundColor White
+    Write-Host "  [2] Verifier maintenant" -ForegroundColor White
+    Write-Host "  [3] Retirer le watchdog" -ForegroundColor White
+    Write-Host "  [4] Activer notifications Windows" -ForegroundColor White
+    Write-Host "  [5] Desactiver notifications" -ForegroundColor White
+    Write-Host "  [0] Retour" -ForegroundColor DarkGray
+    $c = Read-Host "Choix"
+    switch ($c) {
+        "1" { Install-TurboWatchdogTask }
+        "2" { Invoke-TurboWatchdogCheck -Repair }
+        "3" { Remove-TurboWatchdogTask }
+        "4" { Set-NotifyPreference -Enabled $true; Write-Host "[OK] Notifications ON" -ForegroundColor Green }
+        "5" { Set-NotifyPreference -Enabled $false; Write-Host "[OK] Notifications OFF" -ForegroundColor Yellow }
+        default { return }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Estimation VRAM contexte — approx tokens max FP16 vs Q8 pour le GPU
+# ---------------------------------------------------------------------------
+function Get-ModelArchGuess {
+    param([string]$Name, [long]$SizeBytes = 0)
+    $n = "$Name".ToLowerInvariant()
+    $paramsB = 7.0
+    if ($n -match '(^|[:\-_])(70b|72b)([:\-_]|$)') { $paramsB = 70 }
+    elseif ($n -match '(^|[:\-_])(32b|34b|33b)([:\-_]|$)') { $paramsB = 32 }
+    elseif ($n -match '(^|[:\-_])(22b|27b)([:\-_]|$)') { $paramsB = 22 }
+    elseif ($n -match '(^|[:\-_])(14b|13b)([:\-_]|$)') { $paramsB = 14 }
+    elseif ($n -match '(^|[:\-_])(9b|8b)([:\-_]|$)') { $paramsB = 8 }
+    elseif ($n -match '(^|[:\-_])(7b|6b)([:\-_]|$)') { $paramsB = 7 }
+    elseif ($n -match '(^|[:\-_])(3b|4b)([:\-_]|$)') { $paramsB = 3 }
+    elseif ($n -match '(^|[:\-_])(1b|1\.5b)([:\-_]|$)') { $paramsB = 1.5 }
+    elseif ($SizeBytes -gt 0) {
+        # Heuristique Q4/Q5 : ~0.6 Go par milliard de params
+        $paramsB = [math]::Max(1, [math]::Round(($SizeBytes / 1GB) / 0.6, 1))
+    }
+    # Arch type GQA approx (Llama-like)
+    $layers = [math]::Max(16, [int][math]::Round(24 + $paramsB * 1.1))
+    $kvHeads = if ($paramsB -ge 30) { 8 } elseif ($paramsB -ge 10) { 8 } else { 8 }
+    $headDim = 128
+    return @{ ParamsB = $paramsB; Layers = $layers; KvHeads = $kvHeads; HeadDim = $headDim }
+}
+
+function Get-VramContextEstimate {
+    param(
+        [double]$VramGB,
+        [double]$WeightsGB,
+        [hashtable]$Arch,
+        [double]$OverheadGB = 1.5
+    )
+    $freeGB = [math]::Max(0.1, $VramGB - $WeightsGB - $OverheadGB)
+    $freeBytes = $freeGB * 1GB
+    # KV bytes/token ≈ 2 (K+V) * layers * kv_heads * head_dim * elem_size
+    $bpTokFp16 = 2.0 * $Arch.Layers * $Arch.KvHeads * $Arch.HeadDim * 2
+    $bpTokQ8   = 2.0 * $Arch.Layers * $Arch.KvHeads * $Arch.HeadDim * 1
+    $maxFp16 = [int][math]::Floor($freeBytes / $bpTokFp16)
+    $maxQ8   = [int][math]::Floor($freeBytes / $bpTokQ8)
+    return @{
+        FreeGB     = [math]::Round($freeGB, 2)
+        MaxFp16    = $maxFp16
+        MaxQ8      = $maxQ8
+        BytesFp16  = [int]$bpTokFp16
+        BytesQ8    = [int]$bpTokQ8
+        Ratio      = if ($maxFp16 -gt 0) { [math]::Round($maxQ8 / [double]$maxFp16, 2) } else { 0 }
+    }
+}
+
+function Show-VramContextEstimate {
+    Write-Host "`n ESTIMATION VRAM CONTEXTE (approx.)" -ForegroundColor Cyan
+    Write-Host "  Formule KV ≈ 2 × layers × kv_heads × head_dim × bytes/elem" -ForegroundColor DarkGray
+    Write-Host "  Reserve poids modele + ~1.5 Go overhead runtime." -ForegroundColor DarkGray
+    Write-Host ""
+
+    $vramGB = $null
+    try {
+        $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+        $n = 0.0
+        if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vramGB = [math]::Round($n / 1024.0, 1) }
+    } catch {}
+    if (-not $vramGB) {
+        $gpuLabel = Get-NvidiaGpuInfo
+        if ($gpuLabel -match '~([\d\.]+)\s*GB') { $vramGB = [double]$Matches[1] }
+    }
+    if (-not $vramGB) {
+        Write-Host "  [!!] VRAM GPU inconnue." -ForegroundColor Red
+        return
+    }
+    Write-Host ("  GPU VRAM : {0} Go" -f $vramGB) -ForegroundColor Green
+
+    $local = @(Get-LocalOllamaModels)
+    $samples = @()
+    if ($local.Count -gt 0) {
+        foreach ($tier in @(@{re='(7b|8b)'; label='7B/8B'}, @{re='14b'; label='14B'}, @{re='32b|34b'; label='32B'})) {
+            $hit = $local | Where-Object { $_.name -match "(?i)(^|[:\-_])($($tier.re))([:\-_]|$)" } | Sort-Object { [long]$_.size } | Select-Object -First 1
+            if ($hit) { $samples += [pscustomobject]@{ Label = $tier.label; Name = $hit.name; Size = [long]$hit.size } }
+        }
+        if ($samples.Count -eq 0) {
+            $samples = @($local | Sort-Object { [long]$_.size } | Select-Object -First 3 | ForEach-Object {
+                [pscustomobject]@{ Label = 'local'; Name = $_.name; Size = [long]$_.size }
+            })
+        }
+    } else {
+        $samples = @(
+            [pscustomobject]@{ Label = '7B'; Name = 'llama3.1:8b (estime)'; Size = 4.9GB }
+            [pscustomobject]@{ Label = '14B'; Name = 'qwen2.5:14b (estime)'; Size = 9GB }
+            [pscustomobject]@{ Label = '32B'; Name = 'qwen2.5:32b (estime)'; Size = 20GB }
+        )
+    }
+
+    Write-Host (" {0,-8} | {1,-28} | {2,8} | {3,12} | {4,12} | {5,6}" -f "TIER", "MODELE", "POIDS", "MAX FP16", "MAX Q8", "xQ8") -ForegroundColor Yellow
+    Write-Host ("-" * 90) -ForegroundColor DarkGray
+    foreach ($s in $samples) {
+        $arch = Get-ModelArchGuess -Name $s.Name -SizeBytes $s.Size
+        $wGB = [math]::Round($s.Size / 1GB, 1)
+        $est = Get-VramContextEstimate -VramGB $vramGB -WeightsGB $wGB -Arch $arch
+        Write-Host (" {0,-8} | {1,-28} | {2,6} Go | {3,10} tok | {4,10} tok | {5,5}x" -f `
+            $s.Label, ($s.Name.Substring(0, [Math]::Min(28, $s.Name.Length))), $wGB, $est.MaxFp16, $est.MaxQ8, $est.Ratio) -ForegroundColor White
+    }
+    Write-Host ""
+    Write-Host "  Astuce: mode [1] Turbo Context (Q8) ≈ double le contexte vs FP16 a VRAM egale." -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------------------
+# Selection multi-modeles 7B / 14B / 32B
+# ---------------------------------------------------------------------------
+function Resolve-MultiBenchmarkModels {
+    param([string]$ModelsCsv = "")
+    $local = @(Get-LocalOllamaModels)
+    $picked = @()
+
+    if ($ModelsCsv) {
+        foreach ($part in ($ModelsCsv -split ',')) {
+            $name = $part.Trim()
+            if (-not $name) { continue }
+            $hit = $local | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if (-not $hit -and $name -match '^(7b|8b|14b|32b)$') {
+                $re = if ($name -eq '7b') { '7b|8b' } else { $name }
+                $hit = $local | Where-Object { $_.name -match "(?i)(^|[:\-_])($re)([:\-_]|$)" } | Sort-Object { [long]$_.size } | Select-Object -First 1
+            }
+            if ($hit) {
+                $picked += @{ Name = [string]$hit.name; SizeLabel = (Format-ModelSize -Bytes ([long]$hit.size)); Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 8192 }) }
+            } else {
+                Write-Host "  [!!] Modele introuvable: $name" -ForegroundColor Yellow
+            }
+        }
+        return $picked
+    }
+
+    foreach ($tier in @(
+        @{ re = '7b|8b'; label = '7B/8B'; skip = '70b|72b|32b|34b|14b' },
+        @{ re = '14b'; label = '14B'; skip = '70b|32b' },
+        @{ re = '32b|34b'; label = '32B'; skip = '70b' }
+    )) {
+        $hit = $local | Where-Object {
+            $_.name -match "(?i)(^|[:\-_])($($tier.re))([:\-_]|$)" -and
+            $_.name -notmatch "(?i)($($tier.skip))"
+        } | Sort-Object { [long]$_.size } | Select-Object -First 1
+        if ($hit) {
+            $picked += @{
+                Name = [string]$hit.name
+                SizeLabel = (Format-ModelSize -Bytes ([long]$hit.size))
+                Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 8192 })
+                Tier = $tier.label
+            }
+        }
+    }
+    return $picked
+}
+
 # Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / fenetre bench
 if ($Action -eq "install" -or $Action -eq "install-context") { Install-Optimizations -Mode "context"; Exit }
 if ($Action -eq "install-speed") { Install-Optimizations -Mode "speed"; Exit }
 if ($Action -eq "restore") { Restore-Defaults; Exit }
 if ($Action -eq "status")  { Show-Status; Exit }
-if ($Action -eq "bench")   { Run-Benchmark; Stop-BenchmarkHost }
+if ($Action -eq "bench") {
+    Run-Benchmark -ForcedModel $Model -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
+    Stop-BenchmarkHost
+}
+if ($Action -eq "bench-multi") {
+    Run-Benchmark -MultiModel -ForcedModelsCsv $Models -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
+    Stop-BenchmarkHost
+}
 if ($Action -eq "health")  { Invoke-HealthCheck; Exit }
 if ($Action -eq "smart")   { Invoke-SmartGpuPreset; Exit }
+if ($Action -eq "vram")    { Show-VramContextEstimate; Exit }
+if ($Action -eq "watchdog") { Invoke-TurboWatchdogCheck -Repair; Exit }
+if ($Action -eq "watchdog-install") { Install-TurboWatchdogTask; Exit }
+if ($Action -eq "watchdog-remove") { Remove-TurboWatchdogTask; Exit }
 
-# Boucle menu interactive (affichage + choix 1-5 / Q) — aucune action systeme tant que l'usager n'a pas choisi
+# Boucle menu interactive
 do {
     Initialize-MenuConsole
-    # Here-string LITERAL (@' '@) : les backticks de l'ASCII art ne sont pas interpretes par PowerShell
     Write-Host @'
         ____
       .'    '.     _ _                        _____ _
@@ -2239,23 +2647,28 @@ do {
     Write-Host "      by Masterm3u  -  github.com/Masterm3u/Ollama-Turbo-RTX" -ForegroundColor DarkGray
     Write-Host "      Star the repo  |  buymeacoffee.com/masterm3u" -ForegroundColor DarkYellow
 
+    # Check silencieux si watchdog configure (flags perdus apres reboot)
+    try { Invoke-TurboWatchdogCheck -Silent } catch {}
+
     Show-Status
     Show-Menu
 
     $choice = Read-Host $t.prompt_choice
 
-    switch ($choice) {
-        "1" { Install-Optimizations -Mode "context"; Pause }
-        "2" { Install-Optimizations -Mode "speed"; Pause }
-        "3" { Restore-Defaults; Pause }
-        "4" { Start-BenchmarkWindow; Pause }
-        "5" { Select-Language }
-        "6" { Invoke-HealthCheck; Pause }
-        "7" { Invoke-SmartGpuPreset; Pause }
-        "8" { Invoke-WorkflowPreset; Pause }
-        "9" { Invoke-HistoryRestore; Pause }
-        "Q" { Exit }
-        "q" { Exit }
+    switch -Regex ($choice) {
+        '^1$' { Install-Optimizations -Mode "context"; Pause }
+        '^2$' { Install-Optimizations -Mode "speed"; Pause }
+        '^3$' { Restore-Defaults; Pause }
+        '^4$' { Start-BenchmarkWindow; Pause }
+        '^5$' { Select-Language }
+        '^6$' { Invoke-HealthCheck; Pause }
+        '^7$' { Invoke-SmartGpuPreset; Pause }
+        '^8$' { Invoke-WorkflowPreset; Pause }
+        '^9$' { Invoke-HistoryRestore; Pause }
+        '^[Aa]$' { Show-VramContextEstimate; Pause }
+        '^[Mm]$' { Start-BenchmarkWindow -MultiModel; Pause }
+        '^[Ww]$' { Invoke-WatchdogMenu; Pause }
+        '^[Qq]$' { Exit }
         default { Write-Warning "Invalid option." }
     }
-} while ($choice -ne "Q" -and $choice -ne "q")
+} while ($choice -notmatch '^[Qq]$')
