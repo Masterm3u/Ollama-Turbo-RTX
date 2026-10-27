@@ -532,6 +532,15 @@ function Wait-OllamaReady {
 function Stop-OllamaSilent {
     $names = @("ollama*", "ollama app*", "llama-server")
     $procs = Get-Process -Name $names -ErrorAction SilentlyContinue
+    # Aussi via CIM (noms avec espace / chemins Ollama)
+    $extra = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '(?i)ollama|llama-server' -or
+            ($_.ExecutablePath -and $_.ExecutablePath -like '*\Programs\Ollama\*')
+        }
+    if ($extra) {
+        $extra | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
     if ($procs) {
         $procs | Stop-Process -Force -ErrorAction SilentlyContinue
         $deadline = (Get-Date).AddSeconds(8)
@@ -541,7 +550,41 @@ function Stop-OllamaSilent {
         } while ($still -and (Get-Date) -lt $deadline)
         return $true
     }
-    return $false
+    return [bool]$extra
+}
+
+# Avant mise a jour : liberer les DLL CUDA (sinon Inno Setup → DeleteFile code 5 Accès refusé)
+# Cause typique : ollama/llama-server encore charge, ou Defender qui scanne cublasLt (~500 Mo)
+function Unlock-OllamaForUpdate {
+    Write-Host "  [*] Liberation des fichiers Ollama (anti 'DeleteFile code 5')..." -ForegroundColor Cyan
+    Stop-OllamaSilent | Out-Null
+    Start-Sleep -Seconds 2
+
+    $root = Join-Path $env:LOCALAPPDATA "Programs\Ollama"
+    $lib = Join-Path $root "lib\ollama"
+    if (-not (Test-Path $lib)) { return $false }
+
+    # Renommer les dossiers CUDA plutot que supprimer (l'installeur recree tout)
+    Get-ChildItem $lib -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^cuda' } |
+        ForEach-Object {
+            $bak = "$($_.FullName).bak_$(Get-Date -Format 'HHmmss')"
+            try {
+                Rename-Item -Path $_.FullName -NewName (Split-Path $bak -Leaf) -Force -ErrorAction Stop
+                Write-Host "      renomme: $($_.Name) -> $(Split-Path $bak -Leaf)" -ForegroundColor DarkGray
+            } catch {
+                Write-Host "      [!!] Impossible de renommer $($_.Name): $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-Host "          Ferme Ollama (icone tray) + Defender un instant, puis reessaie." -ForegroundColor Yellow
+            }
+        }
+
+    # Nettoyage vieux .bak (disque)
+    Get-ChildItem $lib -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '\.bak_' } |
+        ForEach-Object {
+            try { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
+    return $true
 }
 
 # Decharge les modeles encore en VRAM via l'API locale, puis tue les runners CUDA restants
@@ -874,6 +917,8 @@ function Update-OllamaFromRelease {
     Write-Host "`n  [*] Preparing Ollama update to $tag ..." -ForegroundColor Cyan
     Write-Host "  [*] Stopping local Ollama processes (needed for installer)..." -ForegroundColor DarkGray
     Stop-OllamaSilent | Out-Null
+    # Evite DeleteFile code 5 (DLL CUDA encore chargee / scan AV)
+    Unlock-OllamaForUpdate | Out-Null
 
     # --- Methode PRINCIPALE : curl.exe (fiable + rapide ; choco saute car il bloque souvent) ---
     $dest = Join-Path $env:TEMP ("OllamaSetup-{0}-{1}.exe" -f $tag, (Get-Date -Format 'HHmmss'))
@@ -937,7 +982,10 @@ function Update-OllamaFromRelease {
     }
 
     $mb = [math]::Round((Get-Item $dest).Length / 1MB, 1)
-    Write-Host "  [OK] Downloaded ${mb} MB — launching installer..." -ForegroundColor Green
+    Write-Host "  [OK] Downloaded ${mb} MB — unlocking then launching installer..." -ForegroundColor Green
+    Stop-OllamaSilent | Out-Null
+    Unlock-OllamaForUpdate | Out-Null
+    Start-Sleep -Seconds 1
     try {
         $p = Start-Process -FilePath $dest -Wait -PassThru -ErrorAction Stop
         Write-Host "  [*] Installer exit code: $($p.ExitCode)" -ForegroundColor DarkGray
