@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- WiX 5 MSI: installs OllamaTurboRTX.exe under Program Files + Start Menu shortcut -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="Ollama-Turbo-RTX"
+           Manufacturer="Masterm3u"
+           Version="1.0.0"
+           UpgradeCode="A7C3E9F1-4B2D-4E8A-9C1F-6D5E4B3A2C10"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="1-click Flash Attention + KV Q8 for Ollama on NVIDIA RTX (Windows)" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Ollama-Turbo-RTX is already installed. Remove it first." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon" SourceFile="..\dist\OllamaTurboRTX.exe" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/Masterm3u/Ollama-Turbo-RTX" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/Masterm3u/Ollama-Turbo-RTX" />
+
+    <Feature Id="Main" Title="Ollama-Turbo-RTX" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Ollama-Turbo-RTX" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Ollama-Turbo-RTX" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="AppExe" Guid="B1C2D3E4-F5A6-4789-9ABC-DEF012345678">
+        <File Id="OllamaTurboRTXExe"
+              Source="..\dist\OllamaTurboRTX.exe"
+              KeyPath="yes"
+              Checksum="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="C2D3E4F5-A6B7-4890-ABCD-EF0123456789">
+      <Shortcut Id="StartMenuShortcut"
+                Name="Ollama-Turbo-RTX"
+                Description="Hardware acceleration for Ollama on NVIDIA RTX"
+                Target="[INSTALLFOLDER]OllamaTurboRTX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RemoveFolder Id="RemoveProgramMenuFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\Masterm3u\OllamaTurboRTX" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="D3E4F5A6-B7C8-4901-BCDE-F01234567890">
+      <Shortcut Id="DesktopShortcut"
+                Name="Ollama-Turbo-RTX"
+                Description="Hardware acceleration for Ollama on NVIDIA RTX"
+                Target="[INSTALLFOLDER]OllamaTurboRTX.exe"
+                WorkingDirectory="INSTALLFOLDER"
+                Icon="AppIcon" />
+      <RegistryValue Root="HKCU" Key="Software\Masterm3u\OllamaTurboRTX" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+  </Package>
+</Wix>

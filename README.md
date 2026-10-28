@@ -6,6 +6,8 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
+[![Download MSI](https://img.shields.io/badge/Download-MSI%20Installer-0078D6?logo=windows&logoColor=white)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi)
+[![GitHub release](https://img.shields.io/github/v/release/Masterm3u/Ollama-Turbo-RTX?include_prereleases)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest)
 [![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20after%20update-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
@@ -13,6 +15,19 @@
 <!-- Drop assets/demo.gif then uncomment:
 ![Demo](assets/demo.gif)
 -->
+
+### 📥 Download (Windows GUI — MSI)
+
+| | |
+|--|--|
+| **Installer (recommended)** | **[OllamaTurboRTX-Setup.msi](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi)** |
+| **Portable EXE** | [OllamaTurboRTX.exe](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX.exe) |
+| **All releases** | [github.com/Masterm3u/Ollama-Turbo-RTX/releases](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases) |
+| **Checksums** | `OllamaTurboRTX-Setup.msi.sha256` / `OllamaTurboRTX.exe.sha256` on the same release page |
+
+Self-contained x64 build — **no Admin required** to use the app (User env vars). Double-click the MSI → Start Menu / Desktop shortcut → toggle Turbo Context / Pure Speed / Stock + Quick Bench.
+
+Prefer script / full toolkit? Use the [PowerShell one-liner](#-quick-install-admin-powershell) below.
 
 ### What Ollama-Turbo does for your local LLM
 
@@ -47,15 +62,16 @@ Zero clone. Zero installer. Menu in color → optimize → optional live bench. 
 
 Lightweight WPF app (dark UI): Turbo Context · Pure Speed · Stock · Quick Bench (`4096` / `16384`). Writes **User** environment variables and restarts `ollama app.exe` with FA/KV injected — **no UAC**.
 
+**Download ready-made installer:** [OllamaTurboRTX-Setup.msi](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi) — see [Download section](#-download-windows-gui--msi).
+
 ```powershell
-# Build machine: .NET 8 SDK
+# Build from source (.NET 8 SDK + WiX CLI)
 cd gui
-.\publish.ps1                 # ~0.2 MB — needs .NET 8+ Desktop Runtime on the PC
-.\publish.ps1 -SelfContained  # standalone double-click (larger)
-# → gui\dist\OllamaTurboRTX.exe
+.\publish.ps1 -SelfContained   # portable exe
+.\build-msi.ps1 -Version 1.0.0 # → dist\OllamaTurboRTX-Setup.msi
 ```
 
-Source: [`gui/OllamaTurboRTX/`](gui/OllamaTurboRTX/) · details: [`gui/README.md`](gui/README.md). Attach the published `.exe` to a GitHub **Release** (plus `OllamaTurboRTX.exe.sha256`).
+Source: [`gui/OllamaTurboRTX/`](gui/OllamaTurboRTX/) · installer: [`gui/installer/`](gui/installer/) · docs: [`gui/README.md`](gui/README.md).
 
 | | PowerShell script | WPF GUI |
 |--|-------------------|--------|

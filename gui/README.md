@@ -2,17 +2,23 @@
 
 Single-file Windows app: toggle Flash Attention + KV `q8_0` without Administrator rights.
 
+## Download
+
+- **MSI installer:** https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi
+- **Portable EXE:** https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX.exe
+
 ## Build
 
 ```powershell
-# .NET 8 SDK required
+# .NET 8 SDK required; MSI also needs: dotnet tool install -g wix
 .\publish.ps1                 # framework-dependent (~0.2 MB)
-.\publish.ps1 -SelfContained  # no runtime install on target (~60+ MB)
+.\publish.ps1 -SelfContained  # standalone (~170 MB)
+.\build-msi.ps1 -Version 1.0.0
 ```
 
-Output: `dist\OllamaTurboRTX.exe` (+ `.sha256`).
+Output: `dist\OllamaTurboRTX.exe`, `dist\OllamaTurboRTX-Setup.msi` (+ `.sha256`).
 
-Framework-dependent builds need **[.NET 8+ Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** (`Microsoft.WindowsDesktop.App`). `RollForward=LatestMajor` allows running on newer Desktop runtimes (e.g. .NET 10) when present.
+Framework-dependent builds need **[.NET 8+ Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0)** (`Microsoft.WindowsDesktop.App`). `RollForward=LatestMajor` allows running on newer Desktop runtimes (e.g. .NET 10) when present. The **MSI / SelfContained** builds embed the runtime.
 
 ## Behavior
 
