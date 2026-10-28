@@ -20,17 +20,31 @@
 #   .\Ollama-Turbo-RTX.ps1 -Theme Minimal
 # =============================================================================
 param (
-    [string]$Action = "",   # install-context | install-speed | restore | status | gpu-check | bench | bench-multi | health | smart | vram | watchdog | watchdog-install | watchdog-remove
+    [string]$Action = "",   # install-context | install-speed | restore | status | gpu-check | bench | bench-multi | health | smart | vram | watchdog | watchdog-install | watchdog-remove | workflow-coding | workflow-chat | undo | support
     [string]$Lang = "",     # en | fr | es | de — sinon auto-detect OS
     [string]$Model = "",    # bench CLI : modele unique (ex. llama3.1:8b)
     [string]$Models = "",   # bench-multi CLI : "7b,14b,32b" ou noms separes par virgule
     [int]$Ctx = 0,          # bench CLI : num_ctx (ex. 16384)
+    [int]$HistoryIndex = 1, # undo CLI : 1 = snapshot le plus recent
     [string]$Out = "",      # bench/health CLI : chemin rapport .json / .txt
+    [string]$LogFile = "",  # GUI : capturer toute la sortie console dans un fichier
     [switch]$Notify,        # toasts Windows (install / bench / watchdog)
     [switch]$Quiet,         # sortie minimale, CI-friendly (pas de banner / Pause)
     [ValidateSet("", "Full", "Minimal")]
     [string]$Theme = ""     # Full (defaut) | Minimal (menu court, pas d'ASCII art)
 )
+
+# Capture stdout/stderr pour la GUI WPF (tee vers fichier)
+if ($LogFile) {
+    try {
+        $logDir = Split-Path -Parent $LogFile
+        if ($logDir -and -not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+        Start-Transcript -Path $LogFile -Force -ErrorAction SilentlyContinue | Out-Null
+        $script:TurboTranscriptActive = $true
+    } catch { $script:TurboTranscriptActive = $false }
+} else {
+    $script:TurboTranscriptActive = $false
+}
 
 # Affichage UTF-8 pour accents / bandeau ASCII dans la console Windows
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -3535,10 +3549,14 @@ function Resolve-MultiBenchmarkModels {
 function Exit-Turbo {
     param([int]$Code = 0)
     if ($script:LastExitHint -eq 2) { $Code = 2 }
+    if ($script:TurboTranscriptActive) {
+        try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch {}
+        $script:TurboTranscriptActive = $false
+    }
     exit $Code
 }
 
-# Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / fenetre bench
+# Point d'entree CLI (sans menu) si -Action est fourni — utile pour automation / GUI WPF
 if ($Action -eq "install" -or $Action -eq "install-context") {
     $script:LastExitHint = 0
     Install-Optimizations -Mode "context"
@@ -3567,11 +3585,13 @@ if ($Action -eq "bench") {
     if (-not (Test-NvidiaGpuOrExplain)) { Exit-Turbo 2 }
     Run-Benchmark -ForcedModel $Model -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
     Stop-BenchmarkHost
+    Exit-Turbo
 }
 if ($Action -eq "bench-multi") {
     if (-not (Test-NvidiaGpuOrExplain)) { Exit-Turbo 2 }
     Run-Benchmark -MultiModel -ForcedModelsCsv $Models -ForcedCtx $Ctx -OutPath $Out -NotifyAfter:$Notify
     Stop-BenchmarkHost
+    Exit-Turbo
 }
 if ($Action -eq "health")  { Invoke-HealthCheck; Exit-Turbo }
 if ($Action -eq "smart")   { Invoke-SmartGpuPreset; Exit-Turbo }
@@ -3579,6 +3599,49 @@ if ($Action -eq "vram")    { Show-VramContextEstimate; Exit-Turbo }
 if ($Action -eq "watchdog") { Invoke-TurboWatchdogCheck -Repair; Exit-Turbo }
 if ($Action -eq "watchdog-install") { Install-TurboWatchdogTask; Exit-Turbo }
 if ($Action -eq "watchdog-remove") { Remove-TurboWatchdogTask; Exit-Turbo }
+if ($Action -eq "workflow-coding") {
+    Save-TurboHistorySnapshot -Reason "before-workflow-coding"
+    Install-Optimizations -Mode "context" -SkipHistory
+    Exit-Turbo
+}
+if ($Action -eq "workflow-chat") {
+    Save-TurboHistorySnapshot -Reason "before-workflow-chat"
+    Install-Optimizations -Mode "speed" -SkipHistory
+    Exit-Turbo
+}
+if ($Action -eq "undo") {
+    # Restaure un snapshot d'historique (1 = plus recent) — non-interactif pour la GUI
+    Check-Admin
+    $path = Get-TurboHistoryPath
+    if (-not (Test-Path $path)) {
+        Write-Host "Aucun historique a restaurer." -ForegroundColor Yellow
+        Exit-Turbo 1
+    }
+    $entries = @((Get-Content $path -Raw | ConvertFrom-Json))
+    if ($entries.Count -lt 1) {
+        Write-Host "Aucun historique a restaurer." -ForegroundColor Yellow
+        Exit-Turbo 1
+    }
+    $idx = [math]::Max(0, [int]$HistoryIndex - 1)
+    if ($idx -ge $entries.Count) { $idx = 0 }
+    $e = $entries[$idx]
+    Save-TurboHistorySnapshot -Reason "before-undo-$($e.Id)"
+    Sync-OllamaProcessEnv -FlashAttention $e.FA -KvCacheType $e.KV -HostBind $(if ($e.Host) { $e.Host } else { $null })
+    Restart-Ollama -WaitReady
+    Write-Host ("Historique restaure: {0} (FA={1} KV={2})" -f $e.Timestamp, $e.FA, $e.KV) -ForegroundColor Green
+    Show-Status
+    Exit-Turbo
+}
+if ($Action -eq "support") {
+    foreach ($u in @(
+        "https://github.com/Masterm3u/Ollama-Turbo-RTX",
+        "https://buymeacoffee.com/masterm3u"
+    )) {
+        try { Start-Process $u } catch {}
+        Write-Host "Ouvert: $u" -ForegroundColor Cyan
+    }
+    Exit-Turbo
+}
 
 # Boucle menu interactive
 do {

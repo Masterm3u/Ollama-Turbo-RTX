@@ -10,7 +10,7 @@
     <ApplicationIcon />
     <AssemblyName>OllamaTurboRTX</AssemblyName>
     <RootNamespace>OllamaTurboRTX</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Authors>Masterm3u</Authors>
     <Product>Ollama-Turbo-RTX</Product>
     <Description>1-click Flash Attention + KV Q8 for Ollama on NVIDIA RTX (Windows)</Description>
@@ -21,5 +21,13 @@
     <!-- Prefer installed Desktop runtime 8+ if exact patch missing -->
     <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
+
+  <!-- Ship the full PowerShell engine next to the GUI (1:1 feature parity) -->
+  <ItemGroup>
+    <None Include="..\..\Ollama-Turbo-RTX.ps1"
+          Link="Ollama-Turbo-RTX.ps1"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 
 </Project>

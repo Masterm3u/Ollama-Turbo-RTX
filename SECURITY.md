@@ -39,9 +39,9 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7`
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** see [`checksums.sha256`](checksums.sha256) on `main` (re-scan on VirusTotal after each release).
 
-→ Re-upload to VirusTotal after this release: [file page](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7)
+**GUI MSI** (unsigned): Windows SmartScreen may show *éditeur inconnu* — expected for new open-source builds. Prefer **Informations complémentaires → Exécuter quand même**, or build from source under `gui/`.
 
 After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 

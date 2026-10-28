@@ -1,6 +1,6 @@
 # Ollama-Turbo-RTX — GUI (WPF / .NET 8)
 
-Single-file Windows app: toggle Flash Attention + KV `q8_0` without Administrator rights.
+Windows GUI that exposes **every PowerShell menu action** by launching the bundled `Ollama-Turbo-RTX.ps1` (Machine scope + UAC).
 
 ## Download
 

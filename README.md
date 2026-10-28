@@ -25,7 +25,7 @@
 | **All releases** | [github.com/Masterm3u/Ollama-Turbo-RTX/releases](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases) |
 | **Checksums** | `OllamaTurboRTX-Setup.msi.sha256` / `OllamaTurboRTX.exe.sha256` on the same release page |
 
-Self-contained x64 build — **no Admin required** to use the app (User env vars). Double-click the MSI → Start Menu / Desktop shortcut → toggle Turbo Context / Pure Speed / Stock + Quick Bench.
+Self-contained x64 MSI (GUI **v1.1** = **full PowerShell menu parity**: Context / Speed / Stock / Bench / Multi / Health / Smart / Workflow / Undo / VRAM / Watchdog / Support). Machine env vars → **UAC/Admin** like the `.ps1`. If SmartScreen says *éditeur inconnu*, click **Informations complémentaires** → **Exécuter quand même** (unsigned open-source build).
 
 Prefer script / full toolkit? Use the [PowerShell one-liner](#-quick-install-admin-powershell) below.
 
