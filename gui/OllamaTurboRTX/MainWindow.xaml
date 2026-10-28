@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Ollama-Turbo-RTX"
         Icon="Assets/app.ico"
-        Height="820" Width="980"
-        MinHeight="700" MinWidth="860"
+        Height="860" Width="1000"
+        MinHeight="720" MinWidth="880"
         WindowStartupLocation="CenterScreen"
         Background="#0C0C0E"
         Foreground="#F4F4F5"
@@ -15,23 +15,24 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="120"/>
+            <RowDefinition Height="110"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- En-tete + logo -->
         <DockPanel Grid.Row="0" Margin="0,0,0,14" LastChildFill="True">
-            <Image Source="Assets/app.png" Width="56" Height="56" Margin="0,0,14,0"
-                   DockPanel.Dock="Left" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <Border DockPanel.Dock="Left" Width="88" Height="88" CornerRadius="10" Margin="0,0,16,0"
+                    Background="#18181B" BorderBrush="#27272A" BorderThickness="1" ClipToBounds="True">
+                <Image Source="Assets/app.png" Stretch="UniformToFill"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+            </Border>
             <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="Ollama Turbo" FontSize="28" FontWeight="Bold" Foreground="#38BDF8"/>
-                <TextBlock Text="Acceleration GPU NVIDIA RTX pour Ollama"
+                <TextBlock x:Name="TxtTitle" Text="Ollama Turbo" FontSize="30" FontWeight="Bold" Foreground="#38BDF8"/>
+                <TextBlock x:Name="TxtSubtitle" Text="Acceleration GPU NVIDIA RTX pour Ollama"
                            FontSize="14" Foreground="#A1A1AA" Margin="0,2,0,0"/>
-                <TextBlock x:Name="TxtGpu" FontSize="13" Foreground="#D4D4D8" Margin="0,6,0,0" TextWrapping="Wrap"/>
+                <TextBlock x:Name="TxtGpu" FontSize="13" Foreground="#D4D4D8" Margin="0,8,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </DockPanel>
 
-        <!-- Statut + langue + contexte (tuiles, pas de menu deroulant) -->
         <Border Grid.Row="1" Background="#18181B" CornerRadius="8" Padding="14" Margin="0,0,0,12"
                 BorderBrush="#27272A" BorderThickness="1">
             <Grid>
@@ -40,22 +41,22 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="ETAT ACTUEL" FontSize="11" FontWeight="Bold" Foreground="#71717A"/>
-                    <TextBlock x:Name="TxtStatus" Text="Chargement…" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock x:Name="LblState" Text="ETAT ACTUEL" FontSize="11" FontWeight="Bold" Foreground="#71717A"/>
+                    <TextBlock x:Name="TxtStatus" Text="…" FontSize="18" FontWeight="SemiBold"
                                Foreground="#4ADE80" Margin="0,6,0,0" TextWrapping="Wrap"/>
-                    <Button Content="Actualiser l'etat" Click="BtnRefresh_Click" Style="{StaticResource TileSmall}"
-                            Width="140" HorizontalAlignment="Left" Margin="0,10,0,0" Background="#27272A"/>
+                    <Button x:Name="BtnRefresh" Content="Actualiser" Click="BtnRefresh_Click" Style="{StaticResource TileSmall}"
+                            Width="150" HorizontalAlignment="Left" Margin="0,10,0,0" Background="#27272A"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Margin="20,0,0,0">
-                    <TextBlock Text="LANGUE" FontSize="11" FontWeight="Bold" Foreground="#71717A" Margin="0,0,0,6"/>
-                    <UniformGrid Columns="4" Width="280">
+                    <TextBlock x:Name="LblLang" Text="LANGUE" FontSize="11" FontWeight="Bold" Foreground="#71717A" Margin="0,0,0,6"/>
+                    <UniformGrid Columns="4" Width="300">
                         <Button x:Name="BtnLangFr" Content="FR" Tag="fr" Click="BtnLang_Click" Style="{StaticResource TileSmallOn}"/>
                         <Button x:Name="BtnLangEn" Content="EN" Tag="en" Click="BtnLang_Click" Style="{StaticResource TileSmall}"/>
                         <Button x:Name="BtnLangEs" Content="ES" Tag="es" Click="BtnLang_Click" Style="{StaticResource TileSmall}"/>
                         <Button x:Name="BtnLangDe" Content="DE" Tag="de" Click="BtnLang_Click" Style="{StaticResource TileSmall}"/>
                     </UniformGrid>
-                    <TextBlock Text="CONTEXTE BENCH" FontSize="11" FontWeight="Bold" Foreground="#71717A" Margin="0,12,0,6"/>
-                    <UniformGrid Columns="2" Width="280">
+                    <TextBlock x:Name="LblCtx" Text="CONTEXTE BENCH" FontSize="11" FontWeight="Bold" Foreground="#71717A" Margin="0,12,0,6"/>
+                    <UniformGrid Columns="2" Width="300">
                         <Button x:Name="BtnCtx4k" Content="4 096" Tag="4096" Click="BtnCtx_Click" Style="{StaticResource TileSmallOn}"/>
                         <Button x:Name="BtnCtx16k" Content="16 384" Tag="16384" Click="BtnCtx_Click" Style="{StaticResource TileSmall}"/>
                     </UniformGrid>
@@ -63,134 +64,131 @@
             </Grid>
         </Border>
 
-        <!-- Grille de tuiles (style Start Windows) -->
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
             <StackPanel>
-                <TextBlock Text="OPTIMISATIONS" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,0,0,4"/>
+                <TextBlock x:Name="LblOpt" Text="OPTIMISATIONS" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,0,0,4"/>
                 <UniformGrid Columns="3">
                     <Button Style="{StaticResource Tile}" Background="#0284C7" Height="110" Tag="install-context" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="1  ·  Turbo Contexte" FontSize="16" FontWeight="Bold"/>
-                            <TextBlock Text="Flash Attention + cache Q8" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
-                            <TextBlock Text="Longs chats · ~50 % VRAM en moins" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T1" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="T1b" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
+                            <TextBlock x:Name="T1c" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#0E7490" Height="110" Tag="install-speed" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="2  ·  Turbo Vitesse" FontSize="16" FontWeight="Bold"/>
-                            <TextBlock Text="Flash Attention seul (KV FP16)" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
-                            <TextBlock Text="Debit de tokens maximum" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T2" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="T2b" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
+                            <TextBlock x:Name="T2c" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#3F3F46" Height="110" Tag="restore" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="3  ·  Mode Stock" FontSize="16" FontWeight="Bold"/>
-                            <TextBlock Text="Annuler Turbo (usine)" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
-                            <TextBlock Text="FA off · KV FP16" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T3" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="T3b" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.95"/>
+                            <TextBlock x:Name="T3c" FontSize="12" Margin="0,4,0,0" Opacity="0.8" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                 </UniformGrid>
 
-                <TextBlock Text="BENCHMARK" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,14,0,4"/>
+                <TextBlock x:Name="LblBench" Text="BENCHMARK" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,14,0,4"/>
                 <UniformGrid Columns="2">
                     <Button Style="{StaticResource Tile}" Background="#166534" Height="100" Tag="bench" Click="BtnBench_Click">
                         <StackPanel>
-                            <TextBlock Text="4  ·  Benchmark complet" FontSize="16" FontWeight="Bold"/>
-                            <TextBlock Text="Stock vs FA vs FA+Q8  ·  ~8–15 min" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.9"/>
+                            <TextBlock x:Name="T4" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="T4b" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.9"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#14532D" Height="100" Tag="bench-multi" Click="BtnBench_Click">
                         <StackPanel>
-                            <TextBlock Text="M  ·  Multi-modeles" FontSize="16" FontWeight="Bold"/>
-                            <TextBlock Text="7B / 14B / 32B  ·  test long (15–30+ min)" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.9"/>
+                            <TextBlock x:Name="TM" FontSize="16" FontWeight="Bold"/>
+                            <TextBlock x:Name="TMb" FontSize="13" Margin="0,8,0,0" TextWrapping="Wrap" Opacity="0.9"/>
                         </StackPanel>
                     </Button>
                 </UniformGrid>
 
-                <TextBlock Text="OUTILS" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,14,0,4"/>
+                <TextBlock x:Name="LblTools" Text="OUTILS" FontSize="12" FontWeight="Bold" Foreground="#71717A" Margin="6,14,0,4"/>
                 <UniformGrid Columns="3">
                     <Button Style="{StaticResource Tile}" Background="#1E3A5F" Height="96" Tag="health" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="6  ·  Diagnostic" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Ollama · pilote · API" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T6" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="T6b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#1E3A5F" Height="96" Tag="smart" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="7  ·  Preset intelligent" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Auto selon la VRAM" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T7" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="T7b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#1E3A5F" Height="96" Tag="vram" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="A  ·  Estimation VRAM" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Contexte FP16 vs Q8" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TA" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TAb" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#312E81" Height="96" Tag="workflow-coding" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="8  ·  Coding / Cursor" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Preset Contexte (FA+Q8)" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T8c" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="T8cb" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#312E81" Height="96" Tag="workflow-chat" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="8  ·  Chat rapide" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Preset Vitesse (FA)" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T8h" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="T8hb" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#44403C" Height="96" Tag="undo" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="9  ·  Annuler (Undo)" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Dernier snapshot historique" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="T9" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="T9b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#1E3A5F" Height="96" Tag="gpu-check" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="GPU  ·  Verification" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Architecture · alerte &lt; RTX 2000" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TG" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TGb" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#854D0E" Height="96" Tag="watchdog-install" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="W  ·  Watchdog ON" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Installer au demarrage Windows" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TW1" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TW1b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#854D0E" Height="96" Tag="watchdog" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="W  ·  Verifier flags" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Controler / reparer maintenant" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TW2" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TW2b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#78350F" Height="96" Tag="watchdog-remove" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="W  ·  Watchdog OFF" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Retirer la tache planifiee" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TW3" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TW3b" FontSize="12" Margin="0,6,0,0" Opacity="0.85" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource Tile}" Background="#422006" Height="96" Tag="support" Click="BtnAction_Click">
                         <StackPanel>
-                            <TextBlock Text="S  ·  Soutenir" FontSize="15" FontWeight="Bold" Foreground="#FDE68A"/>
-                            <TextBlock Text="GitHub + Buy me a coffee" FontSize="12" Margin="0,6,0,0" Foreground="#FDE68A" Opacity="0.9" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="TS" FontSize="15" FontWeight="Bold" Foreground="#FDE68A"/>
+                            <TextBlock x:Name="TSb" FontSize="12" Margin="0,6,0,0" Foreground="#FDE68A" Opacity="0.9" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Button>
-                    <Button Style="{StaticResource Tile}" Background="#18181B" Height="96" Click="BtnQuit_Click"
-                            BorderBrush="#3F3F46" BorderThickness="1">
+                    <Button Style="{StaticResource Tile}" Background="#18181B" Height="96" Click="BtnQuit_Click">
                         <StackPanel>
-                            <TextBlock Text="Q  ·  Quitter" FontSize="15" FontWeight="Bold"/>
-                            <TextBlock Text="Fermer l'application" FontSize="12" Margin="0,6,0,0" Opacity="0.85"/>
+                            <TextBlock x:Name="TQ" FontSize="15" FontWeight="Bold"/>
+                            <TextBlock x:Name="TQb" FontSize="12" Margin="0,6,0,0" Opacity="0.85"/>
                         </StackPanel>
                     </Button>
                 </UniformGrid>
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Journal compact -->
         <Border Grid.Row="3" Background="#09090B" CornerRadius="6" Padding="10" Margin="0,10,0,0"
                 BorderBrush="#27272A" BorderThickness="1">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="JOURNAL" FontSize="11" FontWeight="Bold"
+                <TextBlock x:Name="LblJournal" DockPanel.Dock="Top" Text="JOURNAL" FontSize="11" FontWeight="Bold"
                            Foreground="#71717A" Margin="0,0,0,4"/>
                 <TextBox x:Name="TxtLog" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
                          VerticalScrollBarVisibility="Auto" Background="Transparent"
@@ -199,7 +197,6 @@
         </Border>
 
         <TextBlock Grid.Row="4" x:Name="TxtFeedback" Margin="0,10,0,0" FontSize="13"
-                   Foreground="#A1A1AA" TextWrapping="Wrap" TextAlignment="Center"
-                   Text="Cliquez une tuile. Les actions systeme demandent l'Admin (UAC), comme le script PowerShell."/>
+                   Foreground="#A1A1AA" TextWrapping="Wrap" TextAlignment="Center"/>
     </Grid>
 </Window>
