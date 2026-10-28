@@ -7,6 +7,8 @@ Windows GUI that exposes **every PowerShell menu action** by launching the bundl
 - **MSI installer:** https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi
 - **Portable EXE:** https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX.exe
 
+App icon / branding assets: `OllamaTurboRTX/Assets/app.ico` (llama + lightning).
+
 ## Build
 
 ```powershell
