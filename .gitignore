@@ -4,3 +4,11 @@
 Thumbs.db
 Ollama_Turbo_Comparatif.txt
 *.bak
+
+# .NET / WPF GUI
+gui/**/bin/
+gui/**/obj/
+gui/dist/
+*.user
+*.suo
+.vs/

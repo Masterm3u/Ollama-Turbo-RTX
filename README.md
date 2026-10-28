@@ -39,15 +39,37 @@ Out of the box, **Ollama on Windows** keeps **Flash Attention** off and locks th
 irm https://masterm3u.github.io/turbo | iex
 ```
 
-Zero clone. Zero installer. Menu in color → optimize → optional live bench.
+Zero clone. Zero installer. Menu in color → optimize → optional live bench. Writes **Machine** env vars (Admin).
 
 **Prefer to inspect first?** Download, open in Notepad / scan on VirusTotal, then run — see [Security & trust](#-security--trust).
+
+### 🖥️ Optional GUI (no Admin / User env)
+
+Lightweight WPF app (dark UI): Turbo Context · Pure Speed · Stock · Quick Bench (`4096` / `16384`). Writes **User** environment variables and restarts `ollama app.exe` with FA/KV injected — **no UAC**.
+
+```powershell
+# Build machine: .NET 8 SDK
+cd gui
+.\publish.ps1                 # ~0.2 MB — needs .NET 8+ Desktop Runtime on the PC
+.\publish.ps1 -SelfContained  # standalone double-click (larger)
+# → gui\dist\OllamaTurboRTX.exe
+```
+
+Source: [`gui/OllamaTurboRTX/`](gui/OllamaTurboRTX/) · details: [`gui/README.md`](gui/README.md). Attach the published `.exe` to a GitHub **Release** (plus `OllamaTurboRTX.exe.sha256`).
+
+| | PowerShell script | WPF GUI |
+|--|-------------------|--------|
+| Scope | Machine (Admin) | User (no Admin) |
+| Bench | Full Stock/FA/FA+Q8 | Quick local tokens/s |
+| Best for | Full toolkit / automation | Double-click daily toggle |
 
 ---
 
 ### 🔒 Security & trust
 
-This project is **open-source PowerShell only** — no `.exe`, no packed binary, no obfuscation, no telemetry. You can read every line before it runs.
+**Primary tool:** open-source **PowerShell** — no packed binary, no obfuscation, no telemetry. You can read every line before it runs.
+
+**Optional GUI:** open-source **WPF / .NET 8** under [`gui/`](gui/) — build the single-file `.exe` yourself (see below); do not trust random third-party binaries claiming to be this app.
 
 | Check | How |
 |-------|-----|
