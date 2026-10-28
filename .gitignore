@@ -9,6 +9,7 @@ Ollama_Turbo_Comparatif.txt
 gui/**/bin/
 gui/**/obj/
 gui/dist/
+gui/installer/.wix/
 *.user
 *.suo
 .vs/
