@@ -3,30 +3,57 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <Style TargetType="Button">
+        <!-- Tuile large style Windows Start -->
+        <Style x:Key="Tile" TargetType="Button">
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Foreground" Value="#F4F4F5"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Margin" Value="6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+            <Setter Property="Padding" Value="16"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="8"
-                                Padding="12,0"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.75"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <!-- Petite tuile (langue / ctx) -->
+        <Style x:Key="TileSmall" TargetType="Button" BasedOn="{StaticResource Tile}">
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="#3F3F46"/>
+        </Style>
+
+        <Style x:Key="TileSmallOn" TargetType="Button" BasedOn="{StaticResource TileSmall}">
+            <Setter Property="Background" Value="#0284C7"/>
+            <Setter Property="Foreground" Value="White"/>
         </Style>
     </Application.Resources>
 </Application>

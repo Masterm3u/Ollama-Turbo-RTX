@@ -9,6 +9,9 @@ namespace OllamaTurboRTX;
 public partial class MainWindow : Window
 {
     private bool _busy;
+    private string _lang = "fr";
+    private int _ctx = 4096;
+
     private static readonly HashSet<string> ElevateActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "install-context", "install-speed", "restore", "smart",
@@ -20,27 +23,55 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        HighlightLang();
+        HighlightCtx();
         Loaded += async (_, _) =>
         {
             RefreshGpu();
             RefreshStatus();
-            var script = TurboEngine.FindScript();
-            TxtScript.Text = script is null
-                ? "Script: INTROUVABLE — placez Ollama-Turbo-RTX.ps1 a cote de l'exe."
-                : $"Script: {script}";
-            AppendLog("Pret. Toutes les actions appellent Ollama-Turbo-RTX.ps1 (parite 1:1).");
+            AppendLog("Pret — interface tuiles. Chaque action lance le script PowerShell officiel.");
             await RunQuietStatusAsync().ConfigureAwait(true);
         };
     }
 
-    private string SelectedLang()
+    private void BtnLang_Click(object sender, RoutedEventArgs e)
     {
-        if (CmbLang.SelectedItem is ComboBoxItem item && item.Content is string s)
-            return s;
-        return "en";
+        if (sender is Button { Tag: string code })
+        {
+            _lang = code;
+            HighlightLang();
+            TxtFeedback.Text = $"Langue script : {_lang.ToUpperInvariant()}";
+        }
     }
 
-    private int SelectedCtx() => RbCtx16k.IsChecked == true ? 16384 : 4096;
+    private void BtnCtx_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string t } && int.TryParse(t, out var n))
+        {
+            _ctx = n;
+            HighlightCtx();
+            TxtFeedback.Text = $"Contexte bench : {_ctx:N0} tokens";
+        }
+    }
+
+    private void HighlightLang()
+    {
+        SetSmallTile(BtnLangFr, _lang == "fr");
+        SetSmallTile(BtnLangEn, _lang == "en");
+        SetSmallTile(BtnLangEs, _lang == "es");
+        SetSmallTile(BtnLangDe, _lang == "de");
+    }
+
+    private void HighlightCtx()
+    {
+        SetSmallTile(BtnCtx4k, _ctx == 4096);
+        SetSmallTile(BtnCtx16k, _ctx == 16384);
+    }
+
+    private void SetSmallTile(Button btn, bool on)
+    {
+        btn.Style = (Style)FindResource(on ? "TileSmallOn" : "TileSmall");
+    }
 
     private void RefreshGpu()
     {
@@ -49,7 +80,7 @@ public partial class MainWindow : Window
             var smi = FindNvidiaSmi();
             if (smi is null)
             {
-                TxtGpu.Text = "GPU: nvidia-smi introuvable";
+                TxtGpu.Text = "GPU : nvidia-smi introuvable (installez les pilotes NVIDIA)";
                 return;
             }
             var psi = new ProcessStartInfo(smi)
@@ -64,18 +95,18 @@ public partial class MainWindow : Window
             p?.WaitForExit(3000);
             if (string.IsNullOrWhiteSpace(line))
             {
-                TxtGpu.Text = "GPU: (vide)";
+                TxtGpu.Text = "GPU : (aucune donnee)";
                 return;
             }
             var parts = line.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             var name = parts[0];
             var vram = parts.Length > 1 && double.TryParse(parts[1], out var mb)
-                ? $" (~{Math.Round(mb / 1024.0, 1)} GB)" : "";
-            TxtGpu.Text = $"GPU: {name}{vram}";
+                ? $"  ·  {Math.Round(mb / 1024.0, 1)} Go VRAM" : "";
+            TxtGpu.Text = $"GPU : {name}{vram}";
         }
         catch
         {
-            TxtGpu.Text = "GPU: (detection echouee)";
+            TxtGpu.Text = "GPU : detection impossible";
         }
     }
 
@@ -97,19 +128,19 @@ public partial class MainWindow : Window
 
     private void RefreshStatus()
     {
-        var (fa, kv, mode) = TurboEngine.ReadMachineStatus();
+        var (_, _, mode) = TurboEngine.ReadMachineStatus();
         switch (mode)
         {
             case "context":
-                TxtStatus.Text = "ACTIVE: Turbo Context (FA=1, KV=q8_0)";
+                TxtStatus.Text = "Turbo Contexte actif  (Flash Attention + Q8)";
                 TxtStatus.Foreground = Brush("#38BDF8");
                 break;
             case "speed":
-                TxtStatus.Text = "ACTIVE: Turbo Pure Speed (FA=1, KV=FP16)";
+                TxtStatus.Text = "Turbo Vitesse actif  (Flash Attention seul)";
                 TxtStatus.Foreground = Brush("#4ADE80");
                 break;
             default:
-                TxtStatus.Text = "Stock (FA off, KV FP16)";
+                TxtStatus.Text = "Mode Stock  (reglages Ollama par defaut)";
                 TxtStatus.Foreground = Brush("#A1A1AA");
                 break;
         }
@@ -121,26 +152,35 @@ public partial class MainWindow : Window
     private void AppendLog(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        Dispatcher.Invoke(() =>
+        void Write()
         {
-            if (TxtLog.Text.Length > 120_000)
-                TxtLog.Text = TxtLog.Text[^60_000..];
+            if (TxtLog.Text.Length > 80_000)
+                TxtLog.Text = TxtLog.Text[^40_000..];
             TxtLog.AppendText(text.TrimEnd() + Environment.NewLine);
+            TxtLog.CaretIndex = TxtLog.Text.Length;
             TxtLog.ScrollToEnd();
-        });
+        }
+        if (Dispatcher.CheckAccess()) Write();
+        else Dispatcher.Invoke(Write);
     }
 
     private void SetBusy(bool busy)
     {
         _busy = busy;
-        TxtFeedback.Text = busy
-            ? "Execution en cours… (accepte l'UAC si demande — la fenetre reste ouverte)"
-            : "Pret.";
-        Cursor = busy ? System.Windows.Input.Cursors.AppStarting : System.Windows.Input.Cursors.Arrow;
+        void Apply()
+        {
+            TxtFeedback.Text = busy
+                ? "Travail en cours… Acceptez la fenetre Admin (UAC) si elle apparait."
+                : "Pret — cliquez une tuile.";
+            Cursor = busy ? System.Windows.Input.Cursors.AppStarting : System.Windows.Input.Cursors.Arrow;
+        }
+        if (Dispatcher.CheckAccess()) Apply();
+        else Dispatcher.Invoke(Apply);
     }
 
     private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
     {
+        if (_busy) return;
         RefreshGpu();
         RefreshStatus();
         await RunQuietStatusAsync().ConfigureAwait(true);
@@ -148,10 +188,13 @@ public partial class MainWindow : Window
 
     private async Task RunQuietStatusAsync()
     {
+        var lang = _lang; // capture UI thread
         try
         {
-            var r = await TurboEngine.RunActionAsync("status", elevate: false, lang: SelectedLang()).ConfigureAwait(true);
-            AppendLog(r.Output);
+            var result = await Task.Run(async () =>
+                await TurboEngine.RunActionAsync("status", elevate: false, lang: lang).ConfigureAwait(false)
+            ).ConfigureAwait(true);
+            AppendLog(result.Output);
             RefreshStatus();
         }
         catch (Exception ex)
@@ -165,20 +208,12 @@ public partial class MainWindow : Window
         if (_busy) return;
         if (sender is not Button btn || btn.Tag is not string action) return;
 
-        if (action == "support")
+        var elevate = action switch
         {
-            // Pas besoin d'Admin
-            await ExecuteAsync(action, elevate: false, visible: false).ConfigureAwait(true);
-            return;
-        }
-
-        if (action is "vram" or "gpu-check" or "status")
-        {
-            await ExecuteAsync(action, elevate: false, visible: false).ConfigureAwait(true);
-            return;
-        }
-
-        await ExecuteAsync(action, elevate: ElevateActions.Contains(action), visible: false).ConfigureAwait(true);
+            "support" or "vram" or "gpu-check" or "status" => false,
+            _ => ElevateActions.Contains(action)
+        };
+        await ExecuteAsync(action, elevate, visible: false).ConfigureAwait(true);
     }
 
     private async void BtnBench_Click(object sender, RoutedEventArgs e)
@@ -188,55 +223,76 @@ public partial class MainWindow : Window
 
         var multi = action == "bench-multi";
         var msg = multi
-            ? "Multi-bench 7B/14B/32B — souvent 15–30+ min. Continuer ?"
-            : "Full bench Stock/FA/FA+Q8 — souvent 8–15+ min. Continuer ?";
-        var confirm = MessageBox.Show(msg, "Benchmark", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.Yes) return;
+            ? "Benchmark multi-modeles (7B / 14B / 32B).\nDuree typique : 15 a 30+ minutes.\n\nContinuer ?"
+            : "Benchmark complet (Stock vs FA vs FA+Q8).\nDuree typique : 8 a 15 minutes.\n\nContinuer ?";
+        if (MessageBox.Show(msg, "Ollama Turbo — Benchmark", MessageBoxButton.YesNo, MessageBoxImage.Question)
+            != MessageBoxResult.Yes) return;
 
-        await ExecuteAsync(action, elevate: true, visible: true, ctx: SelectedCtx()).ConfigureAwait(true);
+        await ExecuteAsync(action, elevate: true, visible: true, ctx: _ctx).ConfigureAwait(true);
     }
 
     private async Task ExecuteAsync(string action, bool elevate, bool visible, int ctx = 0)
     {
+        // Capturer sur le thread UI AVANT Task.Run (evite InvalidOperationException)
+        var lang = _lang;
+        var ctxUse = ctx > 0 ? ctx : _ctx;
+
         SetBusy(true);
         AppendLog($"\n===== {action} =====");
         TxtFeedback.Text = elevate
-            ? $"UAC / Admin requis pour [{action}]…"
-            : $"Execution [{action}]…";
+            ? $"Action [{action}] — une invite Admin peut s'ouvrir…"
+            : $"Action [{action}]…";
 
         try
         {
-            var progress = new Progress<string>(AppendLog);
+            var progress = new Progress<string>(line => AppendLog(line));
             var result = await Task.Run(async () =>
                 await TurboEngine.RunActionAsync(
                     action,
                     elevate,
-                    lang: SelectedLang(),
-                    ctx: ctx > 0 ? ctx : 0,
+                    lang: lang,
+                    ctx: visible ? ctxUse : 0,
                     visibleConsole: visible,
                     progress: progress).ConfigureAwait(false)
             ).ConfigureAwait(true);
 
             AppendLog(result.Output);
-            AppendLog($"exit={result.ExitCode}");
-            TxtFeedback.Text = result.ExitCode == 0
-                ? $"OK — {action}"
-                : result.ExitCode == -1
-                    ? "UAC refuse."
-                    : $"Termine avec code {result.ExitCode}";
+            AppendLog($"Code sortie : {result.ExitCode}");
+            TxtFeedback.Text = result.ExitCode switch
+            {
+                0 => $"Termine : {LabelOf(action)}",
+                -1 => "Admin refuse (UAC annule).",
+                _ => $"Termine avec code {result.ExitCode}"
+            };
             RefreshStatus();
+            RefreshGpu();
         }
         catch (Exception ex)
         {
             AppendLog("ERREUR: " + ex.Message);
-            TxtFeedback.Text = ex.Message;
-            MessageBox.Show(ex.Message, "Ollama-Turbo-RTX", MessageBoxButton.OK, MessageBoxImage.Error);
+            TxtFeedback.Text = "Erreur — voir le journal.";
+            MessageBox.Show(ex.Message, "Ollama Turbo", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             SetBusy(false);
         }
     }
+
+    private static string LabelOf(string action) => action switch
+    {
+        "install-context" => "Turbo Contexte",
+        "install-speed" => "Turbo Vitesse",
+        "restore" => "Mode Stock",
+        "bench" => "Benchmark",
+        "bench-multi" => "Multi-modeles",
+        "health" => "Diagnostic",
+        "smart" => "Preset intelligent",
+        "vram" => "Estimation VRAM",
+        "undo" => "Annulation",
+        "support" => "Liens ouverts",
+        _ => action
+    };
 
     private void BtnQuit_Click(object sender, RoutedEventArgs e) => Close();
 }
