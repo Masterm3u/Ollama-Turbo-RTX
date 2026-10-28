@@ -658,8 +658,31 @@ function Clear-OllamaGpuRunners {
     Start-Sleep -Milliseconds 800
 }
 
-# Relance Ollama en arriere-plan (fenetre masquee) pour prendre en compte les nouveaux flags env
+# Injecte les flags Machine dans CE process (herites par ollama app.exe / ollama serve)
+# Evite le piege "variables Machine OK mais session courante encore sans FA/KV"
+function Import-OllamaMachineEnvToProcess {
+    $fa = [System.Environment]::GetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', 'Machine')
+    $kv = [System.Environment]::GetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'Machine')
+    $hostBind = [System.Environment]::GetEnvironmentVariable('OLLAMA_HOST', 'Machine')
+
+    if ([string]::IsNullOrEmpty($fa)) { Remove-Item Env:\OLLAMA_FLASH_ATTENTION -ErrorAction SilentlyContinue }
+    else { $env:OLLAMA_FLASH_ATTENTION = $fa }
+
+    if ([string]::IsNullOrEmpty($kv)) { Remove-Item Env:\OLLAMA_KV_CACHE_TYPE -ErrorAction SilentlyContinue }
+    else { $env:OLLAMA_KV_CACHE_TYPE = $kv }
+
+    if ([string]::IsNullOrEmpty($hostBind)) {
+        # Defaut local pour le serveur relance
+        $env:OLLAMA_HOST = "127.0.0.1:11434"
+    } else {
+        $env:OLLAMA_HOST = $hostBind
+    }
+}
+
+# Relance Ollama en arriere-plan avec FA/KV injectes dans le contexte du process enfant
 function Start-OllamaSilent {
+    Import-OllamaMachineEnvToProcess
+
     $appPath = "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
     $cliPath = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
     if (-not (Test-Path $cliPath)) {
@@ -667,39 +690,82 @@ function Start-OllamaSilent {
         if ($cmd) { $cliPath = $cmd.Source }
     }
 
+    # Preferer ollama app.exe (tray) — ProcessStartInfo herite du process courant + override FA/KV
     if (Test-Path $appPath) {
-        Start-Process -FilePath $appPath -ArgumentList @("hidden", "--fast-startup") -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-        return $true
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $appPath
+            $psi.Arguments = "hidden --fast-startup"
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.WorkingDirectory = (Split-Path $appPath)
+            if ($env:OLLAMA_FLASH_ATTENTION) { $psi.EnvironmentVariables['OLLAMA_FLASH_ATTENTION'] = $env:OLLAMA_FLASH_ATTENTION }
+            else { try { [void]$psi.EnvironmentVariables.Remove('OLLAMA_FLASH_ATTENTION') } catch {} }
+            if ($env:OLLAMA_KV_CACHE_TYPE) { $psi.EnvironmentVariables['OLLAMA_KV_CACHE_TYPE'] = $env:OLLAMA_KV_CACHE_TYPE }
+            else { try { [void]$psi.EnvironmentVariables.Remove('OLLAMA_KV_CACHE_TYPE') } catch {} }
+            if ($env:OLLAMA_HOST) { $psi.EnvironmentVariables['OLLAMA_HOST'] = $env:OLLAMA_HOST }
+            [void][System.Diagnostics.Process]::Start($psi)
+            return $true
+        } catch {
+            # Fallback Start-Process (herite aussi $env: de la session apres Import-*)
+            Start-Process -FilePath $appPath -ArgumentList @("hidden", "--fast-startup") -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+            return $true
+        }
     }
 
     if ($cliPath -and (Test-Path $cliPath)) {
-        # Fallback serveur headless (aucune UI)
-        Start-Process -FilePath $cliPath -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-        return $true
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $cliPath
+            $psi.Arguments = "serve"
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.WorkingDirectory = (Split-Path $cliPath)
+            if ($env:OLLAMA_FLASH_ATTENTION) { $psi.EnvironmentVariables['OLLAMA_FLASH_ATTENTION'] = $env:OLLAMA_FLASH_ATTENTION }
+            if ($env:OLLAMA_KV_CACHE_TYPE) { $psi.EnvironmentVariables['OLLAMA_KV_CACHE_TYPE'] = $env:OLLAMA_KV_CACHE_TYPE }
+            if ($env:OLLAMA_HOST) { $psi.EnvironmentVariables['OLLAMA_HOST'] = $env:OLLAMA_HOST }
+            [void][System.Diagnostics.Process]::Start($psi)
+            return $true
+        } catch {
+            Start-Process -FilePath $cliPath -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+            return $true
+        }
     }
 
     return $false
 }
 
-# Cycle complet : stop process Ollama → start silencieux → optionnellement attendre /api/tags
+# Cycle complet : stop tray+serveur → start avec env injecte → attendre API
 function Restart-Ollama {
     param([switch]$WaitReady)
 
-    Write-Host "`n$($t.restarting)" -ForegroundColor Cyan
+    if (-not $script:QuietMode) { Write-Host "`n$($t.restarting)" -ForegroundColor Cyan }
 
+    # Explicit: ollama app (tray) + ollama.exe + runners
+    Get-Process -Name "ollama app","ollama","llama-server" -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
     if (Stop-OllamaSilent) {
-        Write-Host $t.proc_killed -ForegroundColor Yellow
+        if (-not $script:QuietMode) { Write-Host $t.proc_killed -ForegroundColor Yellow }
     }
+    Start-Sleep -Milliseconds 600
 
     if (Start-OllamaSilent) {
-        Write-Host $t.restarted_ok -ForegroundColor Green
+        if (-not $script:QuietMode) {
+            Write-Host $t.restarted_ok -ForegroundColor Green
+            $faNow = $env:OLLAMA_FLASH_ATTENTION
+            $kvNow = $env:OLLAMA_KV_CACHE_TYPE
+            Write-Host ("  -> Process env injecte: FA={0}  KV={1}  HOST={2}" -f `
+                $(if ($faNow) { $faNow } else { "(unset)" }),
+                $(if ($kvNow) { $kvNow } else { "(unset/FP16)" }),
+                $(if ($env:OLLAMA_HOST) { $env:OLLAMA_HOST } else { "default" })) -ForegroundColor DarkGray
+        }
         if ($WaitReady) {
             Wait-OllamaReady | Out-Null
         } else {
             Start-Sleep -Seconds 2
         }
     } else {
-        Write-Host $t.restart_manual -ForegroundColor Yellow
+        if (-not $script:QuietMode) { Write-Host $t.restart_manual -ForegroundColor Yellow }
     }
 }
 
@@ -713,6 +779,195 @@ function Get-ActiveTurboMode {
 }
 
 # Detecte le vendeur GPU (NVIDIA / AMD / Intel / Unknown) — lecture seule
+# Localise nvidia-smi : PATH, puis System32, puis NVSMI classique
+function Find-NvidiaSmi {
+    $cmd = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source -and (Test-Path -LiteralPath $cmd.Source)) { return $cmd.Source }
+
+    $candidates = @(
+        (Join-Path $env:SystemRoot "System32\nvidia-smi.exe"),
+        (Join-Path $env:ProgramFiles "NVIDIA Corporation\NVSMI\nvidia-smi.exe")
+    )
+    if (${env:ProgramFiles(x86)}) {
+        $candidates += (Join-Path ${env:ProgramFiles(x86)} "NVIDIA Corporation\NVSMI\nvidia-smi.exe")
+    }
+    foreach ($p in $candidates) {
+        if ($p -and (Test-Path -LiteralPath $p)) { return $p }
+    }
+    return $null
+}
+
+# Parse generation RTX / arch (Turing+) pour Flash Attention
+function Resolve-NvidiaArchFromName {
+    param(
+        [string]$Name,
+        [string]$ComputeCap = ""
+    )
+    $series = 0
+    $family = "Unknown"
+    $arch = "Unknown"
+    $belowRtx2000 = $true
+    $faRecommended = $false
+
+    if ($Name -match '(?i)(?:GeForce\s+)?RTX\s*(\d{4})') {
+        $series = [int]$Matches[1]
+        $gen = [int][math]::Floor($series / 100)
+        switch ($gen) {
+            50 { $arch = "Blackwell";     $family = "RTX 50xx"; $belowRtx2000 = $false; $faRecommended = $true }
+            40 { $arch = "Ada Lovelace";  $family = "RTX 40xx"; $belowRtx2000 = $false; $faRecommended = $true }
+            30 { $arch = "Ampere";        $family = "RTX 30xx"; $belowRtx2000 = $false; $faRecommended = $true }
+            20 { $arch = "Turing";        $family = "RTX 20xx"; $belowRtx2000 = $false; $faRecommended = $true }
+            default {
+                if ($series -ge 2000) {
+                    $arch = "NVIDIA RTX"; $family = ("RTX {0}" -f $series)
+                    $belowRtx2000 = $false; $faRecommended = $true
+                }
+            }
+        }
+    } elseif ($Name -match '(?i)Quadro\s+RTX|Tesla\s+T4|TITAN\s+RTX') {
+        $arch = "Turing+"; $family = "Pro Turing+"; $belowRtx2000 = $false; $faRecommended = $true
+    } elseif ($Name -match '(?i)A100|A40|A30|A10|A6000|A5000|A4000') {
+        $arch = "Ampere"; $family = "Data Center Ampere"; $belowRtx2000 = $false; $faRecommended = $true
+    } elseif ($Name -match '(?i)H100|H200|L40|L4') {
+        $arch = "Hopper/Ada"; $family = "Data Center"; $belowRtx2000 = $false; $faRecommended = $true
+    } elseif ($Name -match '(?i)GTX\s*16\d{2}') {
+        $arch = "Turing"; $family = "GTX 16xx"
+        # Turing sans Tensor Cores grand public → FA peu utile
+        $belowRtx2000 = $true; $faRecommended = $false
+    } elseif ($Name -match '(?i)GTX\s*10\d{2}|GTX\s*9\d{2}|GTX\s*7\d{2}') {
+        $arch = "Pascal/Maxwell"; $family = "GTX pre-Turing"
+        $belowRtx2000 = $true; $faRecommended = $false
+    }
+
+    # compute_cap (ex. 8.9) : sm_75+ = Turing minimum pour FA efficace
+    if ($ComputeCap -match '^(\d+)\.(\d+)') {
+        $major = [int]$Matches[1]
+        $minor = [int]$Matches[2]
+        $sm = ($major * 10) + $minor
+        if ($sm -lt 75) {
+            $belowRtx2000 = $true
+            $faRecommended = $false
+            if ($arch -eq "Unknown") { $arch = ("sm_{0}{1}" -f $major, $minor) }
+        } elseif ($Name -match '(?i)RTX|A100|A40|H100|L40|Quadro') {
+            $faRecommended = $true
+            if ($series -ge 2000 -or $Name -match '(?i)RTX|A100|H100') { $belowRtx2000 = $false }
+        }
+    }
+
+    return [pscustomobject]@{
+        Series         = $series
+        Family         = $family
+        Arch           = $arch
+        BelowRtx2000   = $belowRtx2000
+        FaRecommended  = $faRecommended
+        ComputeCap     = $ComputeCap
+    }
+}
+
+# Profil GPU NVIDIA complet (WMI + nvidia-smi) — cache session
+function Get-NvidiaGpuProfile {
+    if ($script:CachedGpuProfile) { return $script:CachedGpuProfile }
+
+    $name = $null
+    $vramGB = $null
+    $computeCap = ""
+    $driver = ""
+    $smiPath = Find-NvidiaSmi
+
+    if ($smiPath) {
+        try {
+            $raw = & $smiPath --query-gpu=name,memory.total,compute_cap,driver_version --format=csv,noheader,nounits 2>$null
+            $line = ($raw | Select-Object -First 1)
+            if ($line) {
+                $parts = @(($line -split ",") | ForEach-Object { $_.Trim() })
+                if ($parts.Count -ge 1 -and $parts[0]) { $name = $parts[0] }
+                if ($parts.Count -ge 2) {
+                    $mb = 0.0
+                    if ([double]::TryParse($parts[1], [ref]$mb) -and $mb -gt 0) {
+                        $vramGB = [math]::Round($mb / 1024.0, 1)
+                    }
+                }
+                if ($parts.Count -ge 3 -and $parts[2]) { $computeCap = $parts[2] }
+                if ($parts.Count -ge 4 -and $parts[3]) { $driver = $parts[3] }
+            }
+        } catch {}
+    }
+
+    if (-not $name) {
+        try {
+            $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '(?i)NVIDIA|GeForce|RTX' -and $_.Name -notmatch 'Audio' } |
+                Select-Object -First 1
+            if ($gpu) {
+                $name = [string]$gpu.Name
+                if ($gpu.AdapterRAM -and $gpu.AdapterRAM -gt 0 -and -not $vramGB) {
+                    # AdapterRAM WMI souvent tronque a 4 Go — indicatif seulement
+                    $vramGB = [math]::Round($gpu.AdapterRAM / 1GB, 1)
+                }
+                if ($gpu.DriverVersion) { $driver = [string]$gpu.DriverVersion }
+            }
+        } catch {}
+    }
+
+    if (-not $name) {
+        $script:CachedGpuProfile = [pscustomobject]@{
+            Found = $false; Name = $null; VramGB = $null; SmiPath = $smiPath
+            Series = 0; Family = "Unknown"; Arch = "Unknown"
+            BelowRtx2000 = $true; FaRecommended = $false; ComputeCap = ""; Driver = ""
+        }
+        return $script:CachedGpuProfile
+    }
+
+    $archInfo = Resolve-NvidiaArchFromName -Name $name -ComputeCap $computeCap
+    $script:CachedGpuProfile = [pscustomobject]@{
+        Found          = $true
+        Name           = $name
+        VramGB         = $vramGB
+        SmiPath        = $smiPath
+        Series         = $archInfo.Series
+        Family         = $archInfo.Family
+        Arch           = $archInfo.Arch
+        BelowRtx2000   = $archInfo.BelowRtx2000
+        FaRecommended  = $archInfo.FaRecommended
+        ComputeCap     = $archInfo.ComputeCap
+        Driver         = $driver
+    }
+    return $script:CachedGpuProfile
+}
+
+# Affiche generation GPU + alerte si < RTX 2000 (FA peu efficace hors Turing Tensor Cores)
+function Show-GpuCapabilityReport {
+    param([switch]$SilentOk)
+    $p = Get-NvidiaGpuProfile
+    if (-not $p.Found) { return }
+
+    $label = $p.Name
+    if ($p.VramGB) { $label = "{0} (~{1} GB)" -f $p.Name, $p.VramGB }
+    $genLine = "{0} | {1}" -f $p.Family, $p.Arch
+    if ($p.ComputeCap) { $genLine = "{0} | sm_{1}" -f $genLine, ($p.ComputeCap -replace '\.', '') }
+
+    if ($script:QuietMode) {
+        Write-Turbo -Level info -Message ("gpu_arch family={0} arch={1} fa_ok={2} below_rtx2000={3} name={4}" -f `
+            $p.Family, $p.Arch, $p.FaRecommended, $p.BelowRtx2000, $p.Name)
+        if ($p.BelowRtx2000) {
+            Write-Turbo -Level warn -Message "Flash Attention needs RTX 2000+ (Turing Tensor Cores). Gains may be limited on this GPU."
+        }
+        return
+    }
+
+    if ($p.BelowRtx2000) {
+        Write-Host ""
+        Write-Host "  [!!] GPU sous le seuil RTX 2000 (Turing)" -ForegroundColor Yellow
+        Write-Host ("       Detecte : {0}" -f $label) -ForegroundColor White
+        Write-Host ("       Classe  : {0}" -f $genLine) -ForegroundColor DarkGray
+        Write-Host "       Flash Attention est efficace a partir des RTX 20xx (Tensor Cores)." -ForegroundColor DarkGray
+        Write-Host "       Vous pouvez continuer, mais les gains FA/Q8 seront limites." -ForegroundColor DarkGray
+        Write-Host ""
+    } elseif (-not $SilentOk) {
+        Write-Host ("  [GPU] {0}  —  {1}  OK pour FA/Q8" -f $label, $genLine) -ForegroundColor Green
+    }
+}
+
 function Get-DetectedGpuVendor {
     $adapters = @()
     try {
@@ -724,10 +979,10 @@ function Get-DetectedGpuVendor {
     $hasNvidia = $false
     $hasAmd = $false
     $hasIntel = $false
-    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
-    if ($smi) {
+    $smiPath = Find-NvidiaSmi
+    if ($smiPath) {
         try {
-            $line = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
+            $line = (& $smiPath --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1)
             if ($line) { $hasNvidia = $true; $names = @($line.Trim()) + $names }
         } catch {}
     }
@@ -753,6 +1008,9 @@ function Get-DetectedGpuVendor {
         if ($i) { $primaryName = $i }
     }
 
+    $profile = $null
+    if ($hasNvidia) { $profile = Get-NvidiaGpuProfile }
+
     return [pscustomobject]@{
         Vendor      = $primary
         Name        = $primaryName
@@ -761,6 +1019,8 @@ function Get-DetectedGpuVendor {
         HasAmd      = $hasAmd
         HasIntel    = $hasIntel
         Supported   = $hasNvidia
+        Profile     = $profile
+        SmiPath     = $smiPath
     }
 }
 
@@ -852,30 +1112,22 @@ function Test-NvidiaGpuOrExplain {
     return $false
 }
 
-# Detecte le GPU NVIDIA (nvidia-smi de preference) pour l'affichage statut / rapport — lecture seule
+# Detecte le GPU NVIDIA (nvidia-smi PATH/System32 ou WMI) pour l'affichage statut — lecture seule
 function Get-NvidiaGpuInfo {
     if ($script:CachedGpuInfo) { return $script:CachedGpuInfo }
 
+    $p = Get-NvidiaGpuProfile
+    if ($p.Found) {
+        if ($p.VramGB) {
+            $script:CachedGpuInfo = "{0} (~{1} GB) [{2}]" -f $p.Name, $p.VramGB, $p.Family
+        } else {
+            $script:CachedGpuInfo = "{0} [{1}]" -f $p.Name, $p.Family
+        }
+        return $script:CachedGpuInfo
+    }
+
     $name = $null
     $vramGB = $null
-
-    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
-    if ($smi) {
-        try {
-            $raw = & nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
-            $line = ($raw | Select-Object -First 1)
-            if ($line) {
-                $parts = ($line -split ",") | ForEach-Object { $_.Trim() }
-                if ($parts.Count -ge 1 -and $parts[0]) { $name = $parts[0] }
-                if ($parts.Count -ge 2) {
-                    $mb = 0.0
-                    if ([double]::TryParse($parts[1], [ref]$mb) -and $mb -gt 0) {
-                        $vramGB = [math]::Round($mb / 1024.0, 1)
-                    }
-                }
-            }
-        } catch {}
-    }
 
     if (-not $name) {
         $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
@@ -1370,10 +1622,10 @@ function Invoke-HealthCheck {
         if (-not $script:QuietMode) { Write-Host "  [!!] No Ollama process running" -ForegroundColor Yellow }
     }
 
-    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
-    if ($smi) {
+    $smiPath = Find-NvidiaSmi
+    if ($smiPath) {
         try {
-            $line = (& nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
+            $line = (& $smiPath --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>$null | Select-Object -First 1)
             if (-not $script:QuietMode) { Write-Host "  [OK] NVIDIA driver / GPU : $line" -ForegroundColor Green }
             $gpuName = ""
             $drvVer = ""
@@ -1386,10 +1638,25 @@ function Invoke-HealthCheck {
                 $drvVer = $Matches[2].Trim()
             } else {
                 try {
-                    $gpuName = (& nvidia-smi --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
-                    $drvVer = (& nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
+                    $gpuName = (& $smiPath --query-gpu=name --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
+                    $drvVer = (& $smiPath --query-gpu=driver_version --format=csv,noheader 2>$null | Select-Object -First 1).Trim()
                 } catch {}
             }
+            # Enrichissement arch / alerte < RTX 2000
+            try {
+                $prof = Get-NvidiaGpuProfile
+                if ($prof.Found) {
+                    $health.gpu.family = $prof.Family
+                    $health.gpu.arch = $prof.Arch
+                    $health.gpu.fa_recommended = $prof.FaRecommended
+                    $health.gpu.below_rtx2000 = $prof.BelowRtx2000
+                    if ($prof.BelowRtx2000 -and -not $script:QuietMode) {
+                        Write-Host "  [!!] GPU < RTX 2000 — Flash Attention peu efficace" -ForegroundColor Yellow
+                    } elseif ($prof.FaRecommended -and -not $script:QuietMode) {
+                        Write-Host ("  [OK] Arch {0} ({1}) — FA/Q8 recommande" -f $prof.Arch, $prof.Family) -ForegroundColor Green
+                    }
+                }
+            } catch {}
             $health.gpu.name = $gpuName
             $health.gpu.driver = $drvVer
             if ($gpuName -and $drvVer) {
@@ -1564,11 +1831,13 @@ function Invoke-HealthCheck {
 
 # Retourne un preset selon VRAM detectee (evite OOM sur petites cartes)
 function Get-GpuVramGB {
+    $p = Get-NvidiaGpuProfile
+    if ($p.Found -and $p.VramGB) { return [double]$p.VramGB }
     $vram = $null
-    $smi = Get-Command "nvidia-smi" -ErrorAction SilentlyContinue
-    if ($smi) {
+    $smiPath = Find-NvidiaSmi
+    if ($smiPath) {
         try {
-            $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+            $mb = (& $smiPath --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
             $n = 0.0
             if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vram = [math]::Round($n / 1024.0, 1) }
         } catch {}
@@ -1798,6 +2067,12 @@ function Show-Status {
     Write-Host $t.gpu_label -NoNewline
     if ($vendor.Supported -and $gpuInfo) {
         Write-Host $gpuInfo -ForegroundColor Green
+        $prof = $vendor.Profile
+        if ($prof -and $prof.Found -and $prof.BelowRtx2000) {
+            Write-Host "  [!!] Sous RTX 2000 — Flash Attention peu efficace (Tensor Cores Turing+)" -ForegroundColor Yellow
+        } elseif ($prof -and $prof.Found -and $script:ThemeMode -ne "Minimal") {
+            Write-Host ("  Arch: {0} ({1})" -f $prof.Arch, $prof.Family) -ForegroundColor DarkGray
+        }
     } elseif (-not $vendor.Supported) {
         Write-Host ("{0} [{1}] — NON SUPPORTE par Turbo-RTX" -f $vendor.Name, $vendor.Vendor) -ForegroundColor Yellow
     } else {
@@ -1927,13 +2202,9 @@ function Install-Optimizations {
     }
 
     $gpuInfo = Get-DetectedGpuVendor
-    $vramGB = $null
-    try {
-        $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
-        $n = 0.0
-        if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vramGB = [math]::Round($n / 1024.0, 1) }
-    } catch {}
+    $vramGB = Get-GpuVramGB
     if (-not $vramGB) { $vramGB = "?" }
+    Show-GpuCapabilityReport
 
     Write-Turbo -Level ok -Message ($t.gpu_found -f $gpuInfo.Name, $vramGB)
 
@@ -2251,6 +2522,38 @@ function Select-BenchmarkModel {
     return $defaultChoice
 }
 
+# Palier num_ctx pour le bench : 4096 (standard) vs 16384 (long contexte / Q8)
+function Select-BenchmarkContext {
+    param(
+        [int]$Suggested = 4096,
+        [int]$ForcedCtx = 0
+    )
+    if ($ForcedCtx -gt 0) {
+        return @{ CtxList = @([int]$ForcedCtx); Dual = $false; Label = ("{0}" -f $ForcedCtx) }
+    }
+
+    $defaultPick = if ($Suggested -ge 16384) { "2" } else { "1" }
+
+    Write-Host ""
+    Write-Host "  Palier num_ctx (contexte) :" -ForegroundColor Yellow
+    Write-Host "  [1]  4096 tokens — standard (rapide)" -ForegroundColor White
+    Write-Host "  [2] 16384 tokens — long contexte (ou le cache Q8 brille, ~-50% VRAM)" -ForegroundColor White
+    Write-Host "  [3] Les deux paliers (bench x2 — plus long)" -ForegroundColor DarkGray
+    Write-Host ""
+    $pick = Read-HostWithTimeout -Prompt ("  Choix [1/2/3] defaut={0}" -f $defaultPick) -TimeoutSec 15 -DefaultValue $defaultPick
+
+    if ($pick -eq "3") {
+        Write-Host "  [*] Dual ctx : 4096 puis 16384" -ForegroundColor Cyan
+        return @{ CtxList = @(4096, 16384); Dual = $true; Label = "4096+16384" }
+    }
+    if ($pick -eq "2") {
+        Write-Host "  [*] num_ctx = 16384 (long contexte)" -ForegroundColor Cyan
+        return @{ CtxList = @(16384); Dual = $false; Label = "16384" }
+    }
+    Write-Host "  [*] num_ctx = 4096 (standard)" -ForegroundColor Cyan
+    return @{ CtxList = @(4096); Dual = $false; Label = "4096" }
+}
+
 # Construit un prompt massif (~22k chars) avec GUIDs aleatoires a CHAQUE appel
 # → aucun prefixe commun = pas de Prompt Cache Hit qui fausserait les t/s
 function New-HeavyStressPrompt {
@@ -2461,7 +2764,9 @@ function Confirm-BenchmarkStart {
     Write-Host "  ================================================================" -ForegroundColor Yellow
     Write-Host "   ATTENTION — BENCHMARK LONG (surtout RTX 5080 / multi-modeles)" -ForegroundColor Yellow
     Write-Host "  ================================================================" -ForegroundColor Yellow
+    $ctxLabels = ($ModelQueue | ForEach-Object { $_.Ctx } | Select-Object -Unique) -join " / "
     Write-Host ("   Modeles     : {0}" -f $names) -ForegroundColor White
+    Write-Host ("   num_ctx     : {0}" -f $(if ($ctxLabels) { $ctxLabels } else { "?" })) -ForegroundColor White
     Write-Host ("   Modes       : Stock + Turbo FA + Turbo FA+Q8") -ForegroundColor White
     Write-Host ("   Passes      : {0} chronometrees + 1 warm-up par mode" -f $PassCount) -ForegroundColor White
     Write-Host ("   Duree estimee : environ {0} (souvent > 15 min en multi)" -f $etaLabel) -ForegroundColor Red
@@ -2534,6 +2839,7 @@ function Run-Benchmark {
 
     # Liste de modeles a tester (1 = classique, N = multi 7B/14B/32B)
     $modelQueue = @()
+    $suggestedCtx = 4096
     if ($MultiModel -or $ForcedModelsCsv) {
         $modelQueue = @(Resolve-MultiBenchmarkModels -ModelsCsv $ForcedModelsCsv)
         if ($modelQueue.Count -eq 0) {
@@ -2541,15 +2847,43 @@ function Run-Benchmark {
             return
         }
         Write-Host ("  [*] Multi-modeles : {0}" -f (($modelQueue | ForEach-Object { $_.Name }) -join ' | ')) -ForegroundColor Cyan
+        if ($modelQueue[0].Ctx -gt 0) { $suggestedCtx = [int]$modelQueue[0].Ctx }
     } elseif ($ForcedModel) {
-        $modelQueue = @(@{ Name = $ForcedModel; SizeLabel = $ForcedModel; Ctx = $(if ($ForcedCtx -gt 0) { $ForcedCtx } else { 8192 }) })
+        $modelQueue = @(@{ Name = $ForcedModel; SizeLabel = $ForcedModel; Ctx = 4096 })
     } else {
         $modelInfo = Select-BenchmarkModel
-        $ctxSel = if ($ForcedCtx -gt 0) { $ForcedCtx } elseif ($modelInfo.Ctx -gt 0) { [int]$modelInfo.Ctx } else { 8192 }
-        $modelQueue = @(@{ Name = $modelInfo.Name; SizeLabel = $modelInfo.SizeLabel; Ctx = $ctxSel })
+        $suggestedCtx = if ($modelInfo.Ctx -gt 0) { [int]$modelInfo.Ctx } else { 4096 }
+        # Preferer un des 2 paliers officiels (4096 / 16384)
+        if ($suggestedCtx -ge 12288) { $suggestedCtx = 16384 } else { $suggestedCtx = 4096 }
+        $modelQueue = @(@{ Name = $modelInfo.Name; SizeLabel = $modelInfo.SizeLabel; Ctx = $suggestedCtx })
     }
 
-    $passCount = if ($modelQueue.Count -gt 1) { 2 } else { 3 }  # multi: 2 passes pour rester raisonnable
+    # Palier num_ctx : CLI -Ctx prioritaire ; sinon picker 4096 / 16384 / dual (sauf Quiet+Out)
+    $ctxPick = $null
+    if ($ForcedCtx -gt 0) {
+        $ctxPick = Select-BenchmarkContext -ForcedCtx $ForcedCtx
+    } elseif ($OutPath -or $script:QuietMode) {
+        $autoCtx = if ($suggestedCtx -ge 16384) { 16384 } else { 4096 }
+        $ctxPick = @{ CtxList = @($autoCtx); Dual = $false; Label = "$autoCtx" }
+        Write-Host ("  [*] num_ctx auto (CLI/Quiet) = {0}" -f $autoCtx) -ForegroundColor DarkGray
+    } else {
+        $ctxPick = Select-BenchmarkContext -Suggested $suggestedCtx
+    }
+
+    # Expand queue : 1 modele x N ctx (dual = 2 jobs)
+    $expanded = @()
+    foreach ($mq in $modelQueue) {
+        foreach ($c in $ctxPick.CtxList) {
+            $expanded += @{
+                Name      = $mq.Name
+                SizeLabel = $mq.SizeLabel
+                Ctx       = [int]$c
+            }
+        }
+    }
+    $modelQueue = $expanded
+
+    $passCount = if ($modelQueue.Count -gt 1) { 2 } else { 3 }  # multi/dual: 2 passes pour rester raisonnable
     $confirm = Confirm-BenchmarkStart -ModelQueue $modelQueue -PassCount $passCount -SkipPrompt:([bool]$OutPath)
     if (-not $confirm.Ok) { return }
 
@@ -3107,12 +3441,7 @@ function Show-VramContextEstimate {
     Write-Host "  Reserve poids modele + ~1.5 Go overhead runtime." -ForegroundColor DarkGray
     Write-Host ""
 
-    $vramGB = $null
-    try {
-        $mb = (& nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
-        $n = 0.0
-        if ([double]::TryParse(("$mb").Trim(), [ref]$n)) { $vramGB = [math]::Round($n / 1024.0, 1) }
-    } catch {}
+    $vramGB = Get-GpuVramGB
     if (-not $vramGB) {
         $gpuLabel = Get-NvidiaGpuInfo
         if ($gpuLabel -match '~([\d\.]+)\s*GB') { $vramGB = [double]$Matches[1] }
@@ -3174,7 +3503,7 @@ function Resolve-MultiBenchmarkModels {
                 $hit = $local | Where-Object { $_.name -match "(?i)(^|[:\-_])($re)([:\-_]|$)" } | Sort-Object { [long]$_.size } | Select-Object -First 1
             }
             if ($hit) {
-                $picked += @{ Name = [string]$hit.name; SizeLabel = (Format-ModelSize -Bytes ([long]$hit.size)); Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 8192 }) }
+                $picked += @{ Name = [string]$hit.name; SizeLabel = (Format-ModelSize -Bytes ([long]$hit.size)); Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 4096 }) }
             } else {
                 Write-Host "  [!!] Modele introuvable: $name" -ForegroundColor Yellow
             }
@@ -3195,7 +3524,7 @@ function Resolve-MultiBenchmarkModels {
             $picked += @{
                 Name = [string]$hit.name
                 SizeLabel = (Format-ModelSize -Bytes ([long]$hit.size))
-                Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 8192 })
+                Ctx = $(if ($Ctx -gt 0) { $Ctx } else { 4096 })
                 Tier = $tier.label
             }
         }
@@ -3224,7 +3553,14 @@ if ($Action -eq "restore") { Restore-Defaults; Exit-Turbo }
 if ($Action -eq "status")  { Show-Status; Exit-Turbo }
 if ($Action -eq "gpu-check") {
     $g = Get-DetectedGpuVendor
-    if ($g.Supported) { Write-Turbo -Level ok -Message ("gpu vendor=NVIDIA name={0}" -f $g.Name); Exit-Turbo 0 }
+    if ($g.Supported) {
+        $p = Get-NvidiaGpuProfile
+        Write-Turbo -Level ok -Message ("gpu vendor=NVIDIA name={0} family={1} arch={2} fa_ok={3}" -f `
+            $g.Name, $(if ($p.Found) { $p.Family } else { "?" }), $(if ($p.Found) { $p.Arch } else { "?" }), $(if ($p.Found) { $p.FaRecommended } else { $false }))
+        Show-GpuCapabilityReport
+        if ($p.Found -and $p.BelowRtx2000) { Exit-Turbo 0 }  # NVIDIA mais alerte deja affichee
+        Exit-Turbo 0
+    }
     [void](Show-UnsupportedGpuMessage -GpuInfo $g); Exit-Turbo 2
 }
 if ($Action -eq "bench") {
@@ -3263,12 +3599,14 @@ do {
         Write-Host " Ollama-Turbo-RTX  [$($script:ThemeMode)]" -ForegroundColor Cyan
     }
 
-    # GPU non NVIDIA : message clair une fois (pas de force silencieuse)
+    # GPU non NVIDIA : message clair une fois ; NVIDIA : generation + alerte < RTX 2000
     $bootGpu = Get-DetectedGpuVendor
     if (-not $bootGpu.Supported) {
         [void](Show-UnsupportedGpuMessage -GpuInfo $bootGpu -OpenLinks:$false)
         Write-Host "  Les options [1]/[2]/[4]/[M] necessitent un GPU NVIDIA RTX." -ForegroundColor Yellow
         Write-Host ""
+    } else {
+        Show-GpuCapabilityReport -SilentOk
     }
 
     try { Invoke-TurboWatchdogCheck -Silent } catch {}

@@ -6,7 +6,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-0%2F61%20clean-brightgreen?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20after%20update-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
 
@@ -53,7 +53,7 @@ This project is **open-source PowerShell only** — no `.exe`, no packed binary,
 |-------|-----|
 | **Source** | [`Ollama-Turbo-RTX.ps1`](Ollama-Turbo-RTX.ps1) — plain text |
 | **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
-| **VirusTotal** | **0/61 clean** — [`fdb7413c…`](https://www.virustotal.com/gui/file/fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255) (matches [`checksums.sha256`](checksums.sha256)) |
+| **VirusTotal** | Re-scan after this release — SHA256 [`da7b1f77…`](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7) (matches [`checksums.sha256`](checksums.sha256)) |
 | **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
 | **Code signing** | Not required — trust = open source + checksums + VirusTotal. Optional later: [`SIGNING.md`](SIGNING.md) |
 
@@ -156,9 +156,10 @@ Raw report: [`benchmarks/RTX5080_qwen-64k_2026-10-26.txt`](benchmarks/RTX5080_qw
 ### ✅ Prerequisites
 
 - Windows 10 / 11
-- **NVIDIA RTX 30 / 40 / 50** (required for Turbo flags). AMD / Intel: Ollama may still run — this tool explains non-support and links to [Ollama GPU docs](https://github.com/ollama/ollama/blob/main/docs/gpu.md)
+- **NVIDIA RTX 30 / 40 / 50** (required for Turbo flags; RTX 20xx Turing minimum for Flash Attention). AMD / Intel: Ollama may still run — this tool explains non-support and links to [Ollama GPU docs](https://github.com/ollama/ollama/blob/main/docs/gpu.md)
+- Auto GPU probe via `nvidia-smi` (PATH / `System32`) + WMI — warns if below RTX 2000
 - [Ollama](https://ollama.com/download) installed
-- Run as **Administrator** (Machine environment variables)
+- Run as **Administrator** (Machine environment variables). Restart injects `OLLAMA_*` into `ollama app.exe` so flags apply **without** Windows logout
 
 ---
 
@@ -178,7 +179,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Them
 | `-Lang` | `en` \| `fr` \| `es` \| `de` |
 | `-Model` | Bench model name (e.g. `llama3.1:8b`) |
 | `-Models` | Multi-bench list: `7b,14b,32b` or exact names |
-| `-Ctx` | Bench `num_ctx` (e.g. `16384`) |
+| `-Ctx` | Bench `num_ctx` (`4096` or `16384`; interactive picker if omitted) |
 | `-Out` | Report path (`.json` or `.txt`) |
 | `-Notify` | Windows toast on install / bench / watchdog |
 | `-Quiet` | CI-friendly output (`OK` / `WARN` / `ERROR`), no banner/Pause |
@@ -192,8 +193,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Them
 | `install-speed` | Apply Turbo Pure Speed (FA) |
 | `restore` | Stock rollback |
 | `status` | Print current mode / FA / KV / GPU |
-| `gpu-check` | NVIDIA vs AMD/Intel; exit `2` if unsupported |
-| `bench` | Single-model Stock/FA/FA+Q8 bench |
+| `gpu-check` | NVIDIA vs AMD/Intel + arch (Ampere/Ada/Blackwell); exit `2` if unsupported; warns if &lt; RTX 2000 |
+| `bench` | Single-model Stock/FA/FA+Q8; pick `num_ctx` 4096 / 16384 / both |
 | `bench-multi` | Chain 7B/14B/32B (or `-Models`) |
 | `health` | Full health check; optional `-Out health.json` |
 | `smart` | Apply VRAM-based preset |
@@ -214,9 +215,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Ollama-Turbo-RTX.ps1 -Them
 .\Ollama-Turbo-RTX.ps1 -Action health -Quiet -Out .\health.json
 .\Ollama-Turbo-RTX.ps1 -Action gpu-check -Quiet
 
-# Benchmark → JSON on Desktop path of your choice
-.\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 16384 -Out .\report.json
-.\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Out .\multi.json
+# Benchmark → JSON (4096 = standard, 16384 = long context where Q8 shines)
+.\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 4096 -Out .\report-4k.json
+.\Ollama-Turbo-RTX.ps1 -Action bench -Model llama3.1:8b -Ctx 16384 -Out .\report-16k.json
+.\Ollama-Turbo-RTX.ps1 -Action bench-multi -Models "7b,14b,32b" -Ctx 16384 -Out .\multi.json
 
 # VRAM estimate / smart preset / watchdog
 .\Ollama-Turbo-RTX.ps1 -Action vram

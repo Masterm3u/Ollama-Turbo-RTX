@@ -39,9 +39,9 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255`
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7`
 
-→ **0 / 61 clean:** [VirusTotal file page](https://www.virustotal.com/gui/file/fdb7413c8c53a423ead702c4cba9cf9cf75730b822aec79eb847124827ee6255)
+→ Re-upload to VirusTotal after this release: [file page](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7)
 
 After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 
