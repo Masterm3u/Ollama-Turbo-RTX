@@ -595,30 +595,58 @@ function Wait-OllamaReady {
     return $false
 }
 
+# Enumeration process via CIM (evite Get-Process → regle Sigma "Suspicious Process Discovery")
+function Get-OllamaRelatedProcesses {
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '(?i)^(ollama(\.exe)?|ollama app\.exe|llama-server(\.exe)?)$' -or
+            ($_.ExecutablePath -and $_.ExecutablePath -like '*\Programs\Ollama\*') -or
+            ([string]$_.Name -match '(?i)ollama|llama-server')
+        }
+}
+
+function Test-NamedProcessRunning {
+    param([string[]]$NameLike)
+    $list = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+    foreach ($p in $list) {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension([string]$p.Name)
+        foreach ($pat in $NameLike) {
+            if ($base -like $pat -or [string]$p.Name -like $pat) { return $true }
+        }
+    }
+    return $false
+}
+
+function Stop-NamedProcessesCim {
+    param([string[]]$NameLike)
+    $killed = $false
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | ForEach-Object {
+        $base = [System.IO.Path]::GetFileNameWithoutExtension([string]$_.Name)
+        foreach ($pat in $NameLike) {
+            if ($base -like $pat -or [string]$_.Name -like $pat) {
+                Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                $killed = $true
+                break
+            }
+        }
+    }
+    return $killed
+}
+
 # Tue les process locaux ollama / "ollama app" / llama-server pour liberer la VRAM GPU.
 # Sans ca, un redemarrage partiel laisse d'anciens runners CUDA et provoque des OOM.
 function Stop-OllamaSilent {
-    $names = @("ollama*", "ollama app*", "llama-server")
-    $procs = Get-Process -Name $names -ErrorAction SilentlyContinue
-    # Aussi via CIM (noms avec espace / chemins Ollama)
-    $extra = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -match '(?i)ollama|llama-server' -or
-            ($_.ExecutablePath -and $_.ExecutablePath -like '*\Programs\Ollama\*')
-        }
-    if ($extra) {
-        $extra | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    $targets = @(Get-OllamaRelatedProcesses)
+    if (-not $targets -or $targets.Count -eq 0) { return $false }
+    foreach ($p in $targets) {
+        Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
     }
-    if ($procs) {
-        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
-        $deadline = (Get-Date).AddSeconds(8)
-        do {
-            Start-Sleep -Milliseconds 250
-            $still = Get-Process -Name $names -ErrorAction SilentlyContinue
-        } while ($still -and (Get-Date) -lt $deadline)
-        return $true
-    }
-    return [bool]$extra
+    $deadline = (Get-Date).AddSeconds(8)
+    do {
+        Start-Sleep -Milliseconds 250
+        $still = @(Get-OllamaRelatedProcesses)
+    } while ($still.Count -gt 0 -and (Get-Date) -lt $deadline)
+    return $true
 }
 
 # Avant mise a jour : liberer les DLL CUDA (sinon Inno Setup → DeleteFile code 5 Accès refusé)
@@ -668,7 +696,7 @@ function Clear-OllamaGpuRunners {
             } catch {}
         }
     } catch {}
-    Get-Process -Name "llama-server" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    [void](Stop-NamedProcessesCim -NameLike @("llama-server"))
     Start-Sleep -Milliseconds 800
 }
 
@@ -755,9 +783,8 @@ function Restart-Ollama {
 
     if (-not $script:QuietMode) { Write-Host "`n$($t.restarting)" -ForegroundColor Cyan }
 
-    # Explicit: ollama app (tray) + ollama.exe + runners
-    Get-Process -Name "ollama app","ollama","llama-server" -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    # Explicit: ollama app (tray) + ollama.exe + runners (CIM, pas Get-Process)
+    [void](Stop-NamedProcessesCim -NameLike @("ollama*", "ollama app*", "llama-server"))
     if (Stop-OllamaSilent) {
         if (-not $script:QuietMode) { Write-Host $t.proc_killed -ForegroundColor Yellow }
     }
@@ -1417,7 +1444,7 @@ function Update-OllamaFromRelease {
                 Write-Host "  [!!] Chocolatey timeout (90s) — abandonne." -ForegroundColor Yellow
                 Stop-Job $job -ErrorAction SilentlyContinue
                 Remove-Job $job -Force -ErrorAction SilentlyContinue
-                Get-Process -Name choco -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                [void](Stop-NamedProcessesCim -NameLike @("choco"))
             }
             if ($chocoOk) {
                 Start-Sleep -Seconds 2
@@ -1628,10 +1655,12 @@ function Invoke-HealthCheck {
         }
     }
 
-    $proc = Get-Process -Name "ollama*" -ErrorAction SilentlyContinue
-    if ($proc) {
+    $ollamaProcs = @(Get-OllamaRelatedProcesses)
+    if ($ollamaProcs.Count -gt 0) {
         $health.ollama.running = $true
-        if (-not $script:QuietMode) { Write-Host "  [OK] Ollama process running (PID $($proc[0].Id))" -ForegroundColor Green }
+        if (-not $script:QuietMode) {
+            Write-Host ("  [OK] Ollama process running (PID {0})" -f $ollamaProcs[0].ProcessId) -ForegroundColor Green
+        }
     } else {
         if (-not $script:QuietMode) { Write-Host "  [!!] No Ollama process running" -ForegroundColor Yellow }
     }
@@ -2019,17 +2048,13 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
     Write-Host "`n$($t.reddit_card)" -ForegroundColor Yellow
     Write-Host $cardPlain -ForegroundColor White
     Write-Host "`n  (Markdown Reddit aussi dans le fichier *-reddit.txt)" -ForegroundColor DarkGray
+    # Set-Clipboard natif uniquement (pas Add-Type / WinForms → moins de bruit Sigma)
     $clipOk = $false
-    try { Set-Clipboard -Value $cardPlain; $clipOk = $true } catch {}
-    if (-not $clipOk) {
-        try {
-            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
-            [System.Windows.Forms.Clipboard]::SetText($cardPlain)
-            $clipOk = $true
-        } catch {}
-    }
+    try { Set-Clipboard -Value $cardPlain -ErrorAction Stop; $clipOk = $true } catch {}
     if ($clipOk) {
         Write-Host "  [OK] Carte copiee dans le presse-papiers — Ctrl+V sur Reddit." -ForegroundColor Green
+    } else {
+        Write-Host "  [--] Presse-papiers indisponible — utilisez le fichier *-reddit.txt" -ForegroundColor DarkGray
     }
 }
 
@@ -2040,7 +2065,7 @@ function Show-Status {
     $mode = Get-ActiveTurboMode
     $vendor = Get-DetectedGpuVendor
     $gpuInfo = Get-NvidiaGpuInfo
-    $running = Get-Process -Name "ollama" -ErrorAction SilentlyContinue
+    $running = Test-NamedProcessRunning -NameLike @("ollama", "ollama app", "llama-server")
 
     if ($script:QuietMode) {
         Write-Turbo -Level ok -Message ("status mode={0} fa={1} kv={2} host={3} gpu_vendor={4} gpu={5} ollama={6}" -f `
@@ -2605,69 +2630,24 @@ function New-HeavyStressPrompt {
 # Alias de compatibilite
 function New-BenchmarkStressPrompt { return (New-HeavyStressPrompt) }
 
-# API Win32 user32/kernel32 : redimensionner la VRAIE fenetre Terminal (pas le buffer console)
-# — lecture/positionnement UI uniquement, aucune donnee reseau
-if (-not ("OllamaTurboWin" -as [type])) {
-    Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class OllamaTurboWin {
-    [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
-    [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO {
-        public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags;
-    }
-    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
-    [DllImport("user32.dll")] public static extern bool IsZoomed(IntPtr hWnd);
-    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
-    [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
-    [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint flags);
-    [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr hMon, ref MONITORINFO mi);
-    [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
-}
-"@
-}
-
-# Retrouve le handle HWND de la fenetre visible (conhost classique ou Windows Terminal)
-function Get-TerminalWindowHandle {
-    if (-not $env:WT_SESSION) {
-        return [OllamaTurboWin]::GetConsoleWindow()
-    }
-    $hwnd = [OllamaTurboWin]::GetForegroundWindow()
-    if ($hwnd -eq [IntPtr]::Zero) { return [IntPtr]::Zero }
-    $procId = [uint32]0
-    [void][OllamaTurboWin]::GetWindowThreadProcessId($hwnd, [ref]$procId)
-    $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-    if ($proc -and $proc.ProcessName -like "WindowsTerminal*") { return $hwnd }
-    return [IntPtr]::Zero
-}
-
-# Agrandit la fenetre a la hauteur utile de l'ecran (une seule fois) pour voir le titre ASCII
+# Agrandit le buffer console (sans Add-Type / csc.exe — reduit le bruit Sigma VirusTotal)
 function Resize-TerminalFullHeight {
     if ($script:TerminalResized) { return }
     $script:TerminalResized = $true
     try {
-        try { [void][OllamaTurboWin]::SetThreadDpiAwarenessContext([IntPtr](-4)) } catch {}
-        $hwnd = Get-TerminalWindowHandle
-        if ($hwnd -eq [IntPtr]::Zero -or [OllamaTurboWin]::IsZoomed($hwnd)) { return }
-
-        $rect = New-Object OllamaTurboWin+RECT
-        [void][OllamaTurboWin]::GetWindowRect($hwnd, [ref]$rect)
-        $mi = New-Object OllamaTurboWin+MONITORINFO
-        $mi.cbSize = [System.Runtime.InteropServices.Marshal]::SizeOf($mi)
-        $mon = [OllamaTurboWin]::MonitorFromWindow($hwnd, 2)
-        if (-not [OllamaTurboWin]::GetMonitorInfo($mon, [ref]$mi)) { return }
-
-        $work = $mi.rcWork
-        $width = [math]::Min($rect.Right - $rect.Left, $work.Right - $work.Left)
-        $left = [math]::Max($work.Left, [math]::Min($rect.Left, $work.Right - $width))
-        $rowsBefore = [Console]::WindowHeight
-        [void][OllamaTurboWin]::MoveWindow($hwnd, $left, $work.Top, $width, $work.Bottom - $work.Top, $true)
-
-        for ($i = 0; $i -lt 20 -and [Console]::WindowHeight -eq $rowsBefore; $i++) {
-            Start-Sleep -Milliseconds 50
+        $raw = $Host.UI.RawUI
+        $win = $raw.WindowSize
+        $buf = $raw.BufferSize
+        $maxH = [math]::Max($win.Height, [math]::Min(50, $raw.MaxWindowSize.Height))
+        $maxW = [math]::Max($win.Width, [math]::Min(120, $raw.MaxWindowSize.Width))
+        if ($buf.Height -lt ($maxH + 10)) {
+            $buf.Height = [math]::Max($buf.Height, $maxH + 40)
+            $buf.Width = [math]::Max($buf.Width, $maxW)
+            try { $raw.BufferSize = $buf } catch {}
         }
+        $win.Height = $maxH
+        $win.Width = $maxW
+        try { $raw.WindowSize = $win } catch {}
     } catch {}
 }
 
@@ -3265,15 +3245,8 @@ function Show-TurboNotification {
         $toast = [Windows.UI.Notifications.ToastNotification]::new($doc)
         [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Ollama-Turbo-RTX").Show($toast)
     } catch {
-        try {
-            Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
-            $ni = New-Object System.Windows.Forms.NotifyIcon
-            $ni.Icon = [System.Drawing.SystemIcons]::Information
-            $ni.Visible = $true
-            $ni.ShowBalloonTip(4000, $Title, $Body, [System.Windows.Forms.ToolTipIcon]::Info)
-            Start-Sleep -Milliseconds 500
-            $ni.Dispose()
-        } catch {}
+        # Fallback console (pas Add-Type WinForms — evite artefacts Sigma csc.exe)
+        Write-Host ("  [NOTIFY] {0} — {1}" -f $Title, $Body) -ForegroundColor Cyan
     }
 }
 

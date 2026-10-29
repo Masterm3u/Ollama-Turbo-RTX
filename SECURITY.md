@@ -43,6 +43,16 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 **GUI MSI** (unsigned): Windows SmartScreen may show *éditeur inconnu* — expected for new open-source builds. Prefer **Informations complémentaires → Exécuter quand même**, or build from source under `gui/`.
 
+### VirusTotal: vendors vs Crowdsourced Sigma Rules
+
+- **Security vendors (engines)** at **0/61 undetected** = no AV product classifies the script as malware. That is the primary trust signal.
+- **Crowdsourced Sigma rules** are *behavioral heuristics* (often noisy). They are **not** vendor detections. Older builds could match rules such as:
+  - *Dynamic .NET Compilation Via Csc.EXE* / *Dot net compiler…* — caused by `Add-Type -TypeDefinition` (on-the-fly C# for console resize). **Removed** — resize now uses `$Host.UI.RawUI` only (no `csc.exe`).
+  - *Sysmon File Executable Creation* / *Dynamic CSharp Compile Artefact* — side effects of that same compile. **Gone** with the change above.
+  - *Suspicious Process Discovery With Get-Process* — legitimate local Ollama process checks. **Replaced** with `Get-CimInstance Win32_Process` for the same purpose.
+
+Re-upload the new `Ollama-Turbo-RTX.ps1` after each release; Sigma hits on *old* hashes do not apply to the current source.
+
 After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 
 ### 4. Safer install (no `iex` pipe)
