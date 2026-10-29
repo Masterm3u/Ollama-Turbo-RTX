@@ -75,7 +75,7 @@ Methodology (built into the script): for each mode → 1 warm-up (discarded) + *
 ### Repo
 https://github.com/Masterm3u/Ollama-Turbo-RTX
 
-PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). SHA256 `da7b1f77…` in `checksums.sha256` — re-scan on VirusTotal after each release. Trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
+PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). VirusTotal **0/61 clean**: https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097/detection — trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
 
 If you try it, please reply with GPU + model + your Stock/Speed/Context table — curious how this scales on 3090/4090/5090 etc.
 

@@ -39,7 +39,9 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** see [`checksums.sha256`](checksums.sha256) on `main` (re-scan on VirusTotal after each release).
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097`
+
+→ **0 / 61 clean:** [VirusTotal detection](https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097/detection)
 
 **GUI MSI** (unsigned): Windows SmartScreen may show *éditeur inconnu* — expected for new open-source builds. Prefer **Informations complémentaires → Exécuter quand même**, or build from source under `gui/`.
 
@@ -50,8 +52,6 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
   - *Dynamic .NET Compilation Via Csc.EXE* / *Dot net compiler…* — caused by `Add-Type -TypeDefinition` (on-the-fly C# for console resize). **Removed** — resize now uses `$Host.UI.RawUI` only (no `csc.exe`).
   - *Sysmon File Executable Creation* / *Dynamic CSharp Compile Artefact* — side effects of that same compile. **Gone** with the change above.
   - *Suspicious Process Discovery With Get-Process* — legitimate local Ollama process checks. **Replaced** with `Get-CimInstance Win32_Process` for the same purpose.
-
-Re-upload the new `Ollama-Turbo-RTX.ps1` after each release; Sigma hits on *old* hashes do not apply to the current source.
 
 After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 
