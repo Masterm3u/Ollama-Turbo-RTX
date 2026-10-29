@@ -8,7 +8,7 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
 [![Download MSI](https://img.shields.io/badge/Download-MSI%20Installer-0078D6?logo=windows&logoColor=white)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi)
 [![GitHub release](https://img.shields.io/github/v/release/Masterm3u/Ollama-Turbo-RTX?include_prereleases)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest)
-[![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20after%20update-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7)
+[![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20new%20hash-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097)
 
 > **1-click Ollama optimizer for Windows 10/11 + NVIDIA RTX 30 / 40 / 50** — turn on Flash Attention, set `OLLAMA_KV_CACHE_TYPE=q8_0`, free ~50% context VRAM, and compare Stock vs Turbo tokens/s in a live benchmark.
 
@@ -91,7 +91,7 @@ Source: [`gui/OllamaTurboRTX/`](gui/OllamaTurboRTX/) · installer: [`gui/install
 |-------|-----|
 | **Source** | [`Ollama-Turbo-RTX.ps1`](Ollama-Turbo-RTX.ps1) — plain text |
 | **Checksums** | [`checksums.sha256`](checksums.sha256) — verify with `Get-FileHash` |
-| **VirusTotal** | Re-scan after this release — SHA256 [`da7b1f77…`](https://www.virustotal.com/gui/file/da7b1f773dead7237bcfb9ca193bd058a56e2cc6433e1da3842ae45221fc85a7) (matches [`checksums.sha256`](checksums.sha256)) |
+| **VirusTotal** | Re-upload current build — SHA256 [`4a3b5769…`](https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097) (matches [`checksums.sha256`](checksums.sha256)). Vendors **0/61**; Sigma crowdsourced ≠ malware (see [SECURITY.md](SECURITY.md)) |
 | **Details** | Full policy: [`SECURITY.md`](SECURITY.md) |
 | **Code signing** | Not required — trust = open source + checksums + VirusTotal. Optional later: [`SIGNING.md`](SIGNING.md) |
 
