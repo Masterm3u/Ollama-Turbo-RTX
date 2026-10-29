@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/ollama-turbo-logo.png" alt="Ollama RTX Acceleration" width="420"/>
+</p>
+
 # Ollama-Turbo-RTX - Boost Ollama on Windows RTX (+30% Speed, -50% VRAM in 1 Click)
 
 [![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE)
