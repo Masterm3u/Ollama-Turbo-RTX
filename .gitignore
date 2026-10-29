@@ -10,6 +10,7 @@ gui/**/bin/
 gui/**/obj/
 gui/dist/
 gui/installer/.wix/
+gui/setup-launcher/Payload/
 *.user
 *.suo
 .vs/

@@ -10,7 +10,7 @@
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <AssemblyName>OllamaTurboRTX</AssemblyName>
     <RootNamespace>OllamaTurboRTX</RootNamespace>
-    <Version>1.2.4</Version>
+    <Version>1.2.5</Version>
     <Authors>Masterm3u</Authors>
     <Product>Ollama-Turbo-RTX</Product>
     <Description>1-click Flash Attention + KV Q8 for Ollama on NVIDIA RTX (Windows)</Description>

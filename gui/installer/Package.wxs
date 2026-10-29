@@ -5,7 +5,7 @@
 
   <Package Name="Ollama-Turbo-RTX"
            Manufacturer="Masterm3u"
-           Version="1.2.4"
+           Version="1.2.5"
            UpgradeCode="A7C3E9F1-4B2D-4E8A-9C1F-6D5E4B3A2C10"
            Scope="perMachine"
            Compressed="yes">
@@ -15,7 +15,7 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of Ollama-Turbo-RTX is already installed. Remove it first." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
-    <!-- Dedicated app icon (llama + lightning) for ARP, Start Menu, Desktop -->
+    <!-- App icon for ARP / Start Menu / Desktop (Explorer .msi icon stays Windows-default) -->
     <Icon Id="AppIcon" SourceFile="..\OllamaTurboRTX\Assets\app.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPHELPLINK" Value="https://github.com/Masterm3u/Ollama-Turbo-RTX" />
@@ -27,6 +27,7 @@
       <ComponentRef Id="DesktopShortcut" />
     </Feature>
 
+    <!-- Light Banner/Dialog BMPs: racing-llama graphic only, no baked-in titles (WiX draws readable text) -->
     <ui:WixUI Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
     <WixVariable Id="WixUIBannerBmp" Value="Banner.bmp" />

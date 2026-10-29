@@ -10,7 +10,7 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-5391FE?logo=powershell)](https://github.com/Masterm3u/Ollama-Turbo-RTX)
 [![GitHub stars](https://img.shields.io/github/stars/Masterm3u/Ollama-Turbo-RTX?style=social)](https://github.com/Masterm3u/Ollama-Turbo-RTX/stargazers)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/masterm3u)
-[![Download MSI](https://img.shields.io/badge/Download-MSI%20Installer-0078D6?logo=windows&logoColor=white)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi)
+[![Download Setup](https://img.shields.io/badge/Download-Setup%20EXE-0078D6?logo=windows&logoColor=white)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.exe)
 [![GitHub release](https://img.shields.io/github/v/release/Masterm3u/Ollama-Turbo-RTX?include_prereleases)](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest)
 [![VirusTotal](https://img.shields.io/badge/VirusTotal-re--scan%20new%20hash-yellow?logo=virustotal&logoColor=white)](https://www.virustotal.com/gui/file/8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d/detection)
 
@@ -24,10 +24,11 @@
 
 | | |
 |--|--|
-| **Installer (recommended)** | **[OllamaTurboRTX-Setup.msi](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi)** |
+| **Installer (recommended)** | **[OllamaTurboRTX-Setup.exe](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.exe)** (racing-llama icon) |
+| **MSI (optional)** | [OllamaTurboRTX-Setup.msi](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi) (Windows always shows the generic MSI icon) |
 | **Portable EXE** | [OllamaTurboRTX.exe](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX.exe) |
 | **All releases** | [github.com/Masterm3u/Ollama-Turbo-RTX/releases](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases) |
-| **Checksums** | `OllamaTurboRTX-Setup.msi.sha256` / `OllamaTurboRTX.exe.sha256` on the same release page |
+| **Checksums** | `*.sha256` files on the same release page |
 
 Self-contained x64 MSI (GUI **v1.1** = **full PowerShell menu parity**: Context / Speed / Stock / Bench / Multi / Health / Smart / Workflow / Undo / VRAM / Watchdog / Support). Machine env vars -> **UAC/Admin** like the `.ps1`. If SmartScreen says *éditeur inconnu*, click **Informations complémentaires** -> **Exécuter quand même** (unsigned open-source build).
 
@@ -66,7 +67,7 @@ Zero clone. Zero installer. Menu in color -> optimize -> optional live bench. Wr
 
 Lightweight WPF app (dark UI): Turbo Context · Pure Speed · Stock · Quick Bench (`4096` / `16384`). Writes **User** environment variables and restarts `ollama app.exe` with FA/KV injected - **no UAC**.
 
-**Download ready-made installer:** [OllamaTurboRTX-Setup.msi](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.msi) - see [Download section](#-download-windows-gui--msi).
+**Download ready-made installer:** [OllamaTurboRTX-Setup.exe](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases/latest/download/OllamaTurboRTX-Setup.exe) - see [Download section](#download-windows-gui---msi).
 
 ```powershell
 # Build from source (.NET 8 SDK + WiX CLI)
