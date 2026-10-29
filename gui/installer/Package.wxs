@@ -5,7 +5,7 @@
 
   <Package Name="Ollama-Turbo-RTX"
            Manufacturer="Masterm3u"
-           Version="1.2.1"
+           Version="1.2.2"
            UpgradeCode="A7C3E9F1-4B2D-4E8A-9C1F-6D5E4B3A2C10"
            Scope="perMachine"
            Compressed="yes">
@@ -79,6 +79,7 @@
 
   </Package>
 </Wix>
+
 
 
 
