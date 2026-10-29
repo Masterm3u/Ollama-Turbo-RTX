@@ -1,4 +1,4 @@
-# Reddit launch kit (English)
+﻿# Reddit launch kit (English)
 
 Post when you have: (1) LICENSE live, (2) optional `assets/demo.gif`, (3) real bench numbers in the README (done).
 
@@ -6,7 +6,7 @@ Post when you have: (1) LICENSE live, (2) optional `assets/demo.gif`, (3) real b
 
 | Sub | Angle |
 |-----|--------|
-| **r/LocalLLaMA** | #1 — local inference crowd; lead with numbers |
+| **r/LocalLLaMA** | #1 â€” local inference crowd; lead with numbers |
 | **r/ollama** | Direct users; 1-click + env flags |
 | **r/PowerShell** | Clean Windows automation |
 | **r/nvidia** / **r/pcmasterrace** | Free RTX unlock, no hardware buy |
@@ -24,7 +24,7 @@ I made a 1-click script to fix Ollama's conservative defaults on Windows RTX GPU
 Alternate titles:
 
 ```
-Ollama on Windows leaves Flash Attention + Q8 KV off by default — 1-click PowerShell fix for RTX 30/40/50 (+29% t/s on my RTX 5080)
+Ollama on Windows leaves Flash Attention + Q8 KV off by default â€” 1-click PowerShell fix for RTX 30/40/50 (+29% t/s on my RTX 5080)
 ```
 
 ```
@@ -33,12 +33,12 @@ Free VRAM + +29% gen speed for Ollama on Windows RTX (open-source 1-liner, real 
 
 ---
 
-## Body (r/LocalLLaMA / r/ollama) — ready to paste
+## Body (r/LocalLLaMA / r/ollama) â€” ready to paste
 
 ```
 Hey everyone,
 
-Like many of you, I noticed Ollama runs in very conservative mode out-of-the-box on Windows (disabling Flash Attention and locking the KV cache in FP16 to avoid crashing legacy cards). On modern hardware like RTX 30, 40, and 50 series, this leaves performance on the table—especially with long contexts in Cursor/VS Code.
+Like many of you, I noticed Ollama runs in very conservative mode out-of-the-box on Windows (disabling Flash Attention and locking the KV cache in FP16 to avoid crashing legacy cards). On modern hardware like RTX 30, 40, and 50 series, this leaves performance on the tableâ€”especially with long contexts in Cursor/VS Code.
 
 I built **Ollama-Turbo**: a 1-click, multi-language PowerShell script that detects your NVIDIA GPU, applies Flash Attention + optional Q8 KV caching, restarts the daemon cleanly, and includes a live Stock vs Turbo benchmark.
 
@@ -53,20 +53,20 @@ I built **Ollama-Turbo**: a 1-click, multi-language PowerShell script that detec
 
 | Config | t/s | vs Stock | KV VRAM |
 |--------|-----:|--------:|--------:|
-| Stock (Windows default) | 107.6 | — | 100% |
+| Stock (Windows default) | 107.6 | â€” | 100% |
 | Turbo Pure Speed (FA only) | 107.81 | +0.2% | 100% |
-| **Turbo Context (FA + Q8)** | **139.28** | **+29.4%** | **−50%** |
+| **Turbo Context (FA + Q8)** | **139.28** | **+29.4%** | **âˆ’50%** |
 
 On this machine the winner is **FA + Q8**: ~**+29%** generation throughput and **half** the context VRAM.
 
-Methodology (built into the script): for each mode → 1 warm-up (discarded) + **3 timed runs**, reported value = **average t/s**. Fresh unique prompt each pass + `keep_alive=0` so prompt cache can’t fake the score.
+Methodology (built into the script): for each mode â†’ 1 warm-up (discarded) + **3 timed runs**, reported value = **average t/s**. Fresh unique prompt each pass + `keep_alive=0` so prompt cache canâ€™t fake the score.
 
 ### What it does
 - Turbo Context (FA + Q8) / Turbo Pure Speed (FA) / Rollback
 - Live bench + multi-model (7B/14B/32B) + JSON/CSV/Reddit card export
 - Health check (Ollama + NVIDIA driver links) / VRAM presets / watchdog after reboot
-- Quiet/CI mode, AMD/Intel clear “not supported” + docs links
-- EN/FR/ES/DE + OS language auto-detect · menu [S] = star + coffee
+- Quiet/CI mode, AMD/Intel clear â€œnot supportedâ€ + docs links
+- EN/FR/ES/DE + OS language auto-detect Â· menu [S] = star + coffee
 
 ### Install (Admin PowerShell, one line)
 
@@ -75,9 +75,9 @@ Methodology (built into the script): for each mode → 1 warm-up (discarded) + *
 ### Repo
 https://github.com/Masterm3u/Ollama-Turbo-RTX
 
-PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). VirusTotal **0/61 clean**: https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097/detection — trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
+PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). VirusTotal **0/61 clean**: https://www.virustotal.com/gui/file/8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d/detection â€” trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
 
-If you try it, please reply with GPU + model + your Stock/Speed/Context table — curious how this scales on 3090/4090/5090 etc.
+If you try it, please reply with GPU + model + your Stock/Speed/Context table â€” curious how this scales on 3090/4090/5090 etc.
 
 If it helped: a GitHub star goes a long way, and optional coffee is at https://buymeacoffee.com/masterm3u
 ```
@@ -90,7 +90,7 @@ If it helped: a GitHub star goes a long way, and optional coffee is at https://b
 ```
 Built a 1-click PowerShell tool that sets Ollama Machine env vars on Windows RTX (Flash Attention + optional Q8 KV), self-elevates, restarts the daemon, and runs a comparative inference benchmark.
 
-On my RTX 5080 / qwen-64k @ 16k ctx: Stock 107.6 t/s → FA+Q8 139.28 t/s (+29.4%) with ~50% less KV VRAM.
+On my RTX 5080 / qwen-64k @ 16k ctx: Stock 107.6 t/s â†’ FA+Q8 139.28 t/s (+29.4%) with ~50% less KV VRAM.
 
 Install:
 
@@ -104,11 +104,11 @@ Repo: https://github.com/Masterm3u/Ollama-Turbo-RTX
 ## Short body (r/nvidia / r/pcmasterrace)
 
 ```
-If you run local LLMs with Ollama on an RTX 30/40/50, Windows defaults often leave Flash Attention off and keep KV in FP16 “safe mode.”
+If you run local LLMs with Ollama on an RTX 30/40/50, Windows defaults often leave Flash Attention off and keep KV in FP16 â€œsafe mode.â€
 
 I open-sourced a 1-click script + live bench. On my RTX 5080 (qwen-64k, 16k ctx):
 
-Stock 107.6 t/s → Turbo Context (FA+Q8) 139.28 t/s (+29.4%) and ~50% less context VRAM.
+Stock 107.6 t/s â†’ Turbo Context (FA+Q8) 139.28 t/s (+29.4%) and ~50% less context VRAM.
 
     irm https://masterm3u.github.io/turbo | iex
 
@@ -122,12 +122,12 @@ https://github.com/Masterm3u/Ollama-Turbo-RTX
 ```
 Quick FAQ:
 - Needs Admin (Machine env vars)
-- RTX 30/40/50 required for Turbo; AMD/Intel get a clear “not supported” + Ollama GPU docs links
-- Menu [4] = live bench (warns if 15+ min on fat cards) · [M] = multi-model · exports JSON + Reddit card
-- [6] health · [7] VRAM preset · [W] watchdog after reboot · [S] star/coffee
+- RTX 30/40/50 required for Turbo; AMD/Intel get a clear â€œnot supportedâ€ + Ollama GPU docs links
+- Menu [4] = live bench (warns if 15+ min on fat cards) Â· [M] = multi-model Â· exports JSON + Reddit card
+- [6] health Â· [7] VRAM preset Â· [W] watchdog after reboot Â· [S] star/coffee
 - CLI: -Action install-context|bench|health|smart -Quiet -Out report.json
 - Full raw report: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/benchmarks/RTX5080_qwen-64k_2026-10-26.txt
 - Docs: https://github.com/Masterm3u/Ollama-Turbo-RTX#interactive-menu
-- Stars: https://github.com/Masterm3u/Ollama-Turbo-RTX · coffee: https://buymeacoffee.com/masterm3u
+- Stars: https://github.com/Masterm3u/Ollama-Turbo-RTX Â· coffee: https://buymeacoffee.com/masterm3u
 ```
 

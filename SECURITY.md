@@ -1,4 +1,4 @@
-# Security & trust
+﻿# Security & trust
 
 Ollama-Turbo-RTX ships **only readable PowerShell source**. There is **no compiled project `.exe`**, no obfuscation, and no telemetry.
 
@@ -14,10 +14,10 @@ When you approve Admin elevation it may:
 
 **Optional downloads (only after you confirm in the UI):**
 
-- **Ollama updater** (health check **[6]** → Y): downloads official `OllamaSetup.exe` via `curl.exe` / BITS from `ollama.com` or GitHub releases, then launches the vendor installer
-- **NVIDIA driver**: never downloaded in PowerShell — **Y** only opens the official browser URL
+- **Ollama updater** (health check **[6]** â†’ Y): downloads official `OllamaSetup.exe` via `curl.exe` / BITS from `ollama.com` or GitHub releases, then launches the vendor installer
+- **NVIDIA driver**: never downloaded in PowerShell â€” **Y** only opens the official browser URL
 
-It does **not** phone home for analytics. The one-liner `irm … | iex` only fetches this project’s bootstrap/`get.ps1` + main script from GitHub / GitHub Pages.
+It does **not** phone home for analytics. The one-liner `irm â€¦ | iex` only fetches this projectâ€™s bootstrap/`get.ps1` + main script from GitHub / GitHub Pages.
 
 ## Verify before you run
 
@@ -39,19 +39,19 @@ Published hashes: [`checksums.sha256`](checksums.sha256)
 
 ### 3. VirusTotal report (public)
 
-**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097`
+**Latest `Ollama-Turbo-RTX.ps1` SHA-256:** `8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d`
 
-→ **0 / 61 clean:** [VirusTotal detection](https://www.virustotal.com/gui/file/4a3b57691c5ec550b2dad3c2fb38ea3455267ae0191df290dda0400962036097/detection)
+â†’ **0 / 61 clean:** [VirusTotal detection](https://www.virustotal.com/gui/file/8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d/detection)
 
-**GUI MSI** (unsigned): Windows SmartScreen may show *éditeur inconnu* — expected for new open-source builds. Prefer **Informations complémentaires → Exécuter quand même**, or build from source under `gui/`.
+**GUI MSI** (unsigned): Windows SmartScreen may show *Ã©diteur inconnu* â€” expected for new open-source builds. Prefer **Informations complÃ©mentaires â†’ ExÃ©cuter quand mÃªme**, or build from source under `gui/`.
 
 ### VirusTotal: vendors vs Crowdsourced Sigma Rules
 
 - **Security vendors (engines)** at **0/61 undetected** = no AV product classifies the script as malware. That is the primary trust signal.
 - **Crowdsourced Sigma rules** are *behavioral heuristics* (often noisy). They are **not** vendor detections. Older builds could match rules such as:
-  - *Dynamic .NET Compilation Via Csc.EXE* / *Dot net compiler…* — caused by `Add-Type -TypeDefinition` (on-the-fly C# for console resize). **Removed** — resize now uses `$Host.UI.RawUI` only (no `csc.exe`).
-  - *Sysmon File Executable Creation* / *Dynamic CSharp Compile Artefact* — side effects of that same compile. **Gone** with the change above.
-  - *Suspicious Process Discovery With Get-Process* — legitimate local Ollama process checks. **Replaced** with `Get-CimInstance Win32_Process` for the same purpose.
+  - *Dynamic .NET Compilation Via Csc.EXE* / *Dot net compilerâ€¦* â€” caused by `Add-Type -TypeDefinition` (on-the-fly C# for console resize). **Removed** â€” resize now uses `$Host.UI.RawUI` only (no `csc.exe`).
+  - *Sysmon File Executable Creation* / *Dynamic CSharp Compile Artefact* â€” side effects of that same compile. **Gone** with the change above.
+  - *Suspicious Process Discovery With Get-Process* â€” legitimate local Ollama process checks. **Replaced** with `Get-CimInstance Win32_Process` for the same purpose.
 
 After each code change, re-upload the new file and update this link + [`checksums.sha256`](checksums.sha256).
 
@@ -75,8 +75,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\Ollama-Turbo-RTX.
 
 See **[SIGNING.md](SIGNING.md)** and `tools\Sign-Release.ps1`.
 
-- **Self-signed** → trust only after deploying the cert (lab / company GPO). Does **not** clear SmartScreen for the public.
-- **Commercial Code Signing (OV/EV)** → proves author identity and integrity in transit; required for “no warning” public Windows reputation.
+- **Self-signed** â†’ trust only after deploying the cert (lab / company GPO). Does **not** clear SmartScreen for the public.
+- **Commercial Code Signing (OV/EV)** â†’ proves author identity and integrity in transit; required for â€œno warningâ€ public Windows reputation.
 
 The public GitHub source may ship **unsigned** so every commit stays reviewable; signed builds can be attached as [Releases](https://github.com/Masterm3u/Ollama-Turbo-RTX/releases) once a commercial cert is available.
 

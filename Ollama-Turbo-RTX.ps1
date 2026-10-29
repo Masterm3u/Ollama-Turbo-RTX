@@ -1078,11 +1078,11 @@ function Show-UnsupportedGpuMessage {
     }
 
     $links = @{
-        OllamaGpu = "https://github.com/ollama/ollama/blob/main/docs/gpu.md"
+        OllamaGpu = "https://docs.ollama.com/gpu"
         AmdRoCm   = "https://rocm.docs.amd.com/en/latest/"
-        AmdOllama = "https://github.com/ollama/ollama/blob/main/docs/gpu.md#amd-radeon"
+        AmdOllama = "https://docs.ollama.com/gpu#amd-radeon"
         IntelArc  = "https://www.intel.com/content/www/us/en/developer/articles/technical/intel-arc-gpus-with-ollama.html"
-        IntelGpu  = "https://github.com/ollama/ollama/blob/main/docs/gpu.md#intel-arc-gpus"
+        IntelGpu  = "https://docs.ollama.com/gpu#vulkan-gpu-support"
         NvidiaDrv = "https://www.nvidia.com/Download/index.aspx"
         ThisRepo  = "https://github.com/Masterm3u/Ollama-Turbo-RTX"
     }
@@ -2077,7 +2077,7 @@ function Show-Status {
             $(if ($gpuInfo) { $gpuInfo } else { $vendor.Name }),
             $(if ($running) { "running" } else { "stopped" }))
         if (-not $vendor.Supported) {
-            Write-Turbo -Level warn -Message "turbo_flags_need_nvidia_rtx see https://github.com/ollama/ollama/blob/main/docs/gpu.md"
+            Write-Turbo -Level warn -Message "turbo_flags_need_nvidia_rtx see https://docs.ollama.com/gpu"
         }
         return
     }
