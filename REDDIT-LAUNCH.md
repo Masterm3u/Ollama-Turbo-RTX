@@ -1,4 +1,4 @@
-﻿# Reddit launch kit (English)
+# Reddit launch kit (English)
 
 Post when you have: (1) LICENSE live, (2) optional `assets/demo.gif`, (3) real bench numbers in the README (done).
 
@@ -75,7 +75,7 @@ Methodology (built into the script): for each mode â†’ 1 warm-up (discarded
 ### Repo
 https://github.com/Masterm3u/Ollama-Turbo-RTX
 
-PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). VirusTotal **0/61 clean**: https://www.virustotal.com/gui/file/8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d/detection â€” trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
+PolyForm Noncommercial (personal/non-commercial free). No telemetry. Pure PowerShell source (no .exe). VirusTotal re-scan new hash: https://www.virustotal.com/gui/file/8319afe8a4ada9c628027e48722fa5f4d7769dc474b811a1d64886e2a07d980d/detection â€” trust notes: https://github.com/Masterm3u/Ollama-Turbo-RTX/blob/main/SECURITY.md
 
 If you try it, please reply with GPU + model + your Stock/Speed/Context table â€” curious how this scales on 3090/4090/5090 etc.
 

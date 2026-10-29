@@ -1,4 +1,4 @@
-﻿# Security & trust
+# Security & trust
 
 Ollama-Turbo-RTX ships **only readable PowerShell source**. There is **no compiled project `.exe`**, no obfuscation, and no telemetry.
 
